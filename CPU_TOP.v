@@ -25,21 +25,23 @@ module rv32i_core_top (
     input  wire        int2cpu_tmr,         
     input  wire        int2cpu_sft          
 );
-
-
-
-    // ALU 
-    wire [31:0] alu_result;
-    wire        alu_zero;
-
-
+   //linkwire
+    wire            load_stall;
+    wire            global_stall;
+    wire            fence_stall;
+    wire            flush;
+    wire            flush_ex_jal;
+    wire            global_flush;
+    wire            branch_taken;
+    wire            mem_ready;
     
    //link wire
+    wire    if_id_stall = load_stall | fence_stall | global_stall;
     wire    [31:0]      if_pc;
     wire    [31:0]      if_inst;
     wire                if_valid;
-    wire    [31:0]      jump_pc_if //hazard to if 
-    wire                jump_to_if
+    wire    [31:0]      jump_pc_if; //hazard to if 
+    wire                jump_to_if;
  
     if_stage u_if(
     .clk        (clk),
@@ -67,7 +69,7 @@ module rv32i_core_top (
     wire            if_id_valid;
     wire    [4:0]   if_id_rs1;
     wire    [4:0]   if_id_rs2;
-    wire    if_id_stall = load_stall | global_stall;
+    
     //fi_id
     if_id   u_if_id(
 
@@ -90,29 +92,35 @@ module rv32i_core_top (
         );
 
     // link wire
-    wire    [4:0]   rs1_addr, rs2_addr;
-    wire    [31:0]  rs1_data, rs2_data;
+    //reg_file
+    wire    [4:0]   id_rs1_addr, id_rs2_addr;
+    wire    [31:0]  id_rs1_data, id_rs2_data;
 
-    wire    [4:0]   rd_addr;
-    wire            reg_write_en;
-    wire            wb_sel; // 0: ALU, 1: Mem
-
-    wire    [3:0]   alu_op;
-    wire    [31:0]  alu_in_a, alu_in_b;
-    wire    [2:0]   alu_sign_ab;
-
-    wire    [31:0]  id_rs2_data;
-    wire            mem_read_en, mem_write_en;
-    wire    [2:0]   mem_width;
-    wire            id_branch_en;
-    wire            id_jump_en;
-    wire            id_jump_pc;
-    wire            ebreak_en;// EBREAK
-    wire            ecall_en; // ECALL
-    wire            fence_en; // FENCE
-    wire            illegal_instr;
+    //to ex
+    wire    [3:0]   id_alu_op;
+    wire    [31:0]  id_alu_rs1, id_alu_rs2;
+    wire    [31:0]  id_imm_ext;
+    wire    [1:0]   id_alu_a_sel;
+    wire    [1:0]   id_alu_b_sel;
     wire            id_rs1_use;
     wire            id_rs2_use;
+    wire            id_jump_r;
+    wire            id_branch_en;
+    //data mem
+    wire            id_mem_read_en, id_mem_write_en;
+    wire    [2:0]   id_mem_width;
+    //to hazard
+    wire            id_jump_en;
+    wire    [31:0]  id_jump_pc;
+    wire            id_ebreak_en;// EBREAK
+    wire            id_ecall_en; // ECALL
+    wire            id_fence_en; // FENCE
+    wire            id_illegal_instr;
+    //reg_wb
+    wire    [4:0]   id_rd_addr;
+    wire            id_reg_write_en;
+    wire            id_wb_sel; // 0: ALU, 1: Mem
+
     
     //id
     id_stage u_id (
@@ -121,133 +129,141 @@ module rv32i_core_top (
         .inst_valid     (if_id_valid),
         .inst_pc        (if_id_pc),
         //to reg file
-        .rs1_addr       (rs1_addr),
-        .rs2_addr       (rs2_addr),
-        .rs1_data       (rs1_data),
-        .rs2_data       (rs2_data),
+        .rs1_addr       (id_rs1_addr),
+        .rs2_addr       (id_rs2_addr),
+        .rs1_data       (id_rs1_data),
+        .rs2_data       (id_rs2_data),
 
-        //deliver until to wb rs1/2/rd addr should deliver 
-        .rd_addr        (rd_addr),
-        .reg_write_en   (reg_write_en),
-        .wb_sel         (wb_sel),
-
-        //to alu
-        .alu_op         (alu_op),
-        .alu_in_a       (alu_in_a),
-        .alu_in_b       (alu_in_b),
-        .sign_ab        (alu_sign_ab),
-        //deliver until mem
-        .id_rs2_data    (id_rs2_data),
-        .mem_read_en    (mem_read_en),
-        .mem_write_en   (mem_write_en),
-        .mem_width      (mem_width),
-        //jump
+             
+        //to ex
+        .alu_op         (id_alu_op),
+        .alu_in_rs1     (id_alu_rs1),
+        .alu_in_rs2     (id_alu_rs2),
+        .imm_ext        (id_imm_ext),
+        .alu_a_sel      (id_alu_a_sel),
+        .alu_b_sel      (id_alu_b_sel),
+        .rs1_use        (id_rs1_use),//to hazard also
+        .rs2_use        (id_rs2_use),
+        .jump_r         (id_jump_r),
         .branch_en      (id_branch_en),
-        //neednt deliver
+
+        //deliver until mem
+        .mem_read_en    (id_mem_read_en),
+        .mem_write_en   (id_mem_write_en),
+        .mem_width      (id_mem_width),
+        //to hazard
         .jump_en        (id_jump_en),
         .pc_jump        (id_jump_pc),
-        //other
-        .ebreak_en      (ebreak_en),
-        .ecall_en       (ecall_en),
-        .fence_en       (fence_en),
-        .illegal_instr  (illegal_instr),
-        //to id_ex sign rs1/rs2 use
-        .rs1_use        (id_rs1_use),
-        .rs2_use        (id_rs2_use)
+        .ebreak_en      (id_ebreak_en),
+        .ecall_en       (id_ecall_en),
+        .fence_en       (id_fence_en),
+        .illegal_instr  (id_illegal_instr),
+        //reg_wb_delivey
+        .rd_addr        (id_rd_addr),
+        .reg_write_en   (id_reg_write_en),
+        .wb_sel         (id_wb_sel),
+        
+        .load_stall     (load_stall)
 
     );
     // link wire
     wire        [3:0]   ex_alu_op;
-    wire        [31:0]  ex_alu_in_a;
-    wire        [31:0]  ex_alu_in_b;
-    wire        [1:0]   ex_sign_ab;
-    wire        [3:0]   ex_funct3;
+    wire        [31:0]  ex_alu_rs1;
+    wire        [31:0]  ex_alu_rs2;
+    wire        [31:0]  ex_alu_imm;
+    wire        [1:0]   ex_a_sel;
+    wire        [1:0]   ex_b_sel;
+    wire                ex_rs1_use;
+    wire                ex_rs2_use;
+    wire        [2:0]   ex_funct3;
     wire                ex_branch_en;
+    wire                ex_jump_r;
 
     wire        [4:0]   ex_rs1_addr;    // Forwarding/hazard Unit
     wire        [4:0]   ex_rs2_addr;
-    wire                ex_rs1_use;
-    wire                ex_rs2_use;
     
-    // EX/MEM & MEM/WB 
-    wire        [4:0]   ex_rd_addr;//to hazard and ex_mem
-    wire        [31:0]  ex_rs2_data; // MEM Store data
+    // EX/MEM 
+    wire        [4:0]   ex_rd_addr;//to hazard and ex_mem,forward
     wire                ex_mem_read_en;
     wire                ex_mem_write_en;
     wire        [2:0]   ex_mem_width;
     //delivery 
-    wire        [31:0]  ex_id_pc;
-    wire        [31:0]  ex_id_inst;
-    wire                ex_id_valid;
+    wire        [31:0]  ex_pc;
+    wire        [31:0]  ex_inst;
+    wire                ex_valid;
     //wb
     wire                ex_reg_write_en;
     wire                ex_wb_sel;
+    wire                ex_fence;
 
-    wire        [31:0]  branch_pc;
-
+    wire        [31:0]  branch_or_jump_pc;
 id_ex u_id_ex (
     .clk            (clk),
     .rst_n          (rst_n),
     .global_stall   (global_stall),//global stall
     .stall          (load_stall),//load_use stall
-    .flush          (flush),
+    .flush          (flush_ex_jal),
     //from if_id 
     .id_pc          (if_id_pc),
     .id_inst        (if_id_inst),
     .id_valid       (if_id_valid),
     //from id
-    .id_rd_addr     (rd_addr),
-    .id_reg_write_en(reg_write_en),
-    .id_wb_sel      (wb_sel),
-    
-    .id_rs1_addr    (rs1_addr),
-    .id_rs2_addr    (rs2_addr),//judge hazard
-
-    .alu_op         (alu_op),
-    .alu_in_a       (alu_in_a),
-    .alu_in_b       (alu_in_b),
-    .sign_ab        (alu_sign_ab),
+    .id_alu_op      (id_alu_op),
+    .id_alu_rs1     (id_alu_rs1),
+    .id_alu_rs2     (id_alu_rs2),
+    .id_imm_ext     (id_imm_ext),
+    .id_a_sel       (id_alu_a_sel),
+    .id_b_sel       (id_alu_b_sel),
     .id_rs1_use     (id_rs1_use),
     .id_rs2_use     (id_rs2_use),
-
-    .id_mem_read_en (mem_read_en),
-    .id_mem_write_en(mem_write_en),
-    .id_mem_width   (mem_width),
-
     .id_branch_en   (id_branch_en),
+    .id_jump_r      (id_jump_r),
+    
+    .id_mem_read_en (id_mem_read_en),
+    .id_mem_write_en(id_mem_write_en),
+    .id_mem_width   (id_mem_width),
+
+    .id_rd_addr     (id_rd_addr),
+    .id_reg_write_en(id_reg_write_en),
+    .id_wb_sel      (id_wb_sel),
+    .id_fence       (id_fence_en),
+
+    .id_rs1_addr    (id_rs1_addr),
+    .id_rs2_addr    (id_rs2_addr),//judge hazard
     // to ex
     .ex_alu_op      (ex_alu_op),
-    .ex_alu_in_a    (ex_alu_in_a),
-    .ex_alu_in_b    (ex_alu_in_b),
-    .ex_sign_ab     (ex_sign_ab),
+    .ex_alu_rs1     (ex_alu_rs1),//
+    .ex_alu_rs2     (ex_alu_rs2),// also ro ex_mem
+    .ex_alu_imm     (ex_alu_imm),
+    .ex_a_sel       (ex_a_sel),
+    .ex_b_sel       (ex_b_sel),
+    .ex_rs1_use     (ex_rs1_use),//also to forward hazard
+    .ex_rs2_use     (ex_rs2_use),
+    .ex_funct3      (ex_funct3),//also to ex_mem sign byte hw w word 
     .ex_branch_en   (ex_branch_en),
-    .ex_funct3      (ex_funct3)
+    .ex_jump_r      (ex_jump_r),
     //to forward and next pipel reg
     .ex_rs1_addr    (ex_rs1_addr),
     .ex_rs2_addr    (ex_rs2_addr),
-    .ex_rs1_use     (ex_rs1_use),
-    .ex_rs2_use     (ex_rs2_use),
-    //to ex_mem
-    .o_rd_addr      (ex_rd_addr), //to hazard and ex_mem
-    .o_rs2_data     (ex_rs2_data),
-    .o_mem_read_en  (ex_mem_read_en),//to hazard and ex_mem
-    .o_mem_write_en (ex_mem_write_en),
-    .o_mem_width    (ex_mem_width),
+    //to ex_mem  
+    .ex_mem_read_en  (ex_mem_read_en),
+    .ex_mem_write_en (ex_mem_write_en),
+    .ex_mem_width    (ex_mem_width),
+    .ex_fence        (ex_fence),
     //delivery
-    .o_id_pc        (ex_pc),
-    .o_id_inst      (ex_inst),
-    .o_id_valid     (ex_valid),
+    .ex_pc          (ex_pc),
+    .ex_inst        (ex_inst),
+    .ex_valid       (ex_valid),
     //wb
-    .o_reg_write_en (ex_reg_wirte_en),
-    .wb_sel         (ex_wb_sel),
-    //hazard 
-    .branch_pc      (branch_pc) //special ex stage get branch or not id_ex is pc
+    .ex_rd_addr     (ex_rd_addr),//also to hazard
+    .ex_reg_write_en(ex_reg_write_en),
+    .ex_wb_sel      (ex_wb_sel)
     );
-   //linkwire
-    wire            load_stall;
-    wire            global_stall;
-    wire            flush;
+    wire                wb_fence;    
+    wire                mem_fence;
 hazard u_hazard (
+    .clk            (clk),
+    .rst_n          (rst_n),
     //load ues hazard
     .id_ex_rd       (ex_rd_addr),
     .id_ex_mem_read (ex_mem_read_en), 
@@ -255,149 +271,195 @@ hazard u_hazard (
     .if_id_rs2      (if_id_rs2),
 
     .load_stall     (load_stall),
+    .fence_stall    (fence_stall),
     .global_stall   (global_stall),
-    .flush          (flush)
+    .flush          (flush),
+    .flush_ex_jal   (flush_ex_jal),
+    .global_flush   (global_flush),
 
     //jump or branch
-    jump_en         (id_jump_en),
-    jump_pc         (id_jump_pc),
-    branch_taken    (branch_taken),
-    branch_pc       (branch_pc),
+    .jump_en         (id_jump_en),
+    .jump_pc         (id_jump_pc),
+    .branch_taken    (branch_taken),
+    .branch_pc       (branch_or_jump_pc),//alu to hazard
+    .wb_fence        (wb_fence),
+    .mem_fence       (mem_fence),
+    .jump_to_if      (jump_to_if),
+    .jump_pc_if      (jump_pc_if),
 
-    jump_to_if      (jump_to_if),
-    jump_pc_if      (jump_pc_if)
-
+    .mem_ready          (mem_ready),
+    .id_ebreak_en       (id_ebreak_en),
+    .id_ecall_en        (id_ecall_en),
+    .id_fence_en        (id_fence_en),
+    .id_illegal_instr   (id_illegal_instr)
 
 );
 //link wire
 
-    wire    [4:0]   for_mem_rd,
-    wire    [4:0]   for_wb_rd, 
-    wire            for_mem_reg_write,
-    wire            for_wb_reg_write, 
-
-    wire    [1:0]   mem_forward_en,//[1] rs1 [0] rs2
-    wire    [1:0]   wb_forward_en,
+    wire        [4:0]   mem_rd_addr;
+    wire        [4:0]      wb_addr;
+    wire                mem_reg_write_en;
+    wire                wb_en;
+    wire    [1:0]   mem_forward_en;//[1] rs1 [0] rs2
+    wire    [1:0]   wb_forward_en;
 forward u_forward(
     .for_id_rs1         (ex_rs1_addr),
     .for_id_rs2         (ex_rs2_addr),
     .for_rs1_use        (ex_rs1_use),
     .for_rs2_use        (ex_rs2_use),
-    .for_mem_rd         (for_mem_rd),
-    .for_wb_rd          (for_wb_rd),
-    .for_mem_reg_write  (for_mem_reg_wire),
-    .for_wb_reg_write   (for_wb_reg_write),
+    .for_mem_rd         (mem_rd_addr),
+    .for_wb_rd          (wb_addr),
+    .for_mem_reg_write  (mem_reg_write_en),
+    .for_wb_reg_write   (wb_en),
     .mem_forward_en     (mem_forward_en),
     .wb_forward_en      (wb_forward_en)
  ); 
 
  //link wire 
  wire   [31:0]  mem_forward_data;
- wire   [31:0]  mem_forward_data;
- wire           branch_taken;
+ wire   [31:0]  updated_rs2;
+ wire   [31:0]  alu_result;
+ wire        [31:0]      wb_data;
 
     ex_stage u_ex (
-        .alu_src_a              (alu_in_a),
-        .alu_src_b              (alu_in_b),
-        .sign_ab                (alu_sign_ab),
-        .decoder2alu_sel        (alu_op),
-        .ex_funct3              (ex_funct3),
-        .branch_en              (ex_branch_en),
-        .mem_forward_en         (mem_forward_en),//forward
-        .wb_forward_en          (wb_forward_en),
-        .mem_forward_data       (mem_forward_data),
-        .wb_forward_data        (wb_forward_data),
-        .alu_result_o           (alu_result),
-        .alu_zero_o             (alu_zero),
-        .branch_taken           (branch_taken)
+        .ex_alu_op          (ex_alu_op),
+        .ex_alu_rs1         (ex_alu_rs1),
+        .ex_alu_rs2         (ex_alu_rs2),
+        .ex_alu_imm         (ex_alu_imm),
+        .ex_a_sel           (ex_a_sel),
+        .ex_b_sel           (ex_b_sel),
+        .ex_rs1_use         (ex_rs1_use),
+        .ex_rs2_use         (ex_rs2_use),
+        .ex_funct3          (ex_funct3),
+        .ex_branch_en       (ex_branch_en),
+        .ex_jump_r          (ex_jump_r),
+        .ex_pc              (ex_pc),
+        .mem_forward_en     (mem_forward_en),//forward
+        .wb_forward_en      (wb_forward_en),
+        .mem_forward_data   (mem_forward_data),
+        .wb_forward_data    (wb_data),
+        .alu_result_o       (alu_result),
+        .updated_rs2        (updated_rs2),
+        .branch_taken       (branch_taken),
+        .branch_or_jump_pc  (branch_or_jump_pc)
     );
+// link wire
+        wire                mem_mem_write_en;
+        wire                mem_mem_read_en;
+        wire        [2:0]   mem_mem_width;
+        wire        [31:0]  mem_alu_result; //also to wb
+        wire        [31:0]  mem_updated_rs2;//updated_rs2
+    //to mem_wb
+        //wire        [4:0]   mem_rd_addr;
+        //wire                mem_reg_write_en;
+        wire                mem_wb_sel;
 
-    assign cpu2instr_req  = 1'b1; // requie instruction 
-
-
-
-     
-    // --- 5. 存储器接口处理 (Load/Store) ---
-    assign cpu2data_addr  = alu_result;
-    assign cpu2data_wdata = rs2_data;//if write in mem addr and data is must this
-    assign cpu2data_we    = mem_write_en;
-    assign cpu2data_rd    = mem_read_en;
-    assign cpu2data_req   = mem_read_en || mem_write_en;
+        wire        [31:0]  mem_pc;
+        
+ex_mem u_mem (
+        .clk                (clk),
+        .rst_n              (rst_n),
     
-    // 生成字节使能 (BE)，用于 SB, SH, SW 指令
-    assign cpu2data_be = (mem_width == 3'b000) ? (4'b0001 << alu_result[1:0]) : // Byte
-                         (mem_width == 3'b001) ? (4'b0011 << alu_result[1:0]) : // Half
-                         (mem_width == 3'b010) ? 4'b1111 : // Word
-                                                 4'b0000;
-    // --- Load Data Extender ---
-reg [31:0] load_data_final;
-wire [1:0] addr_offset = alu_result[1:0]; // low 2 bit  make sure byte offset 
+        .flush              (global_flush),
+        .stall              (global_stall),
+    //frome id_ex
+    //to mem
+        .ex_mem_write_en    (ex_mem_write_en),
+        .ex_mem_read_en     (ex_mem_read_en),
+        .ex_mem_width       (ex_mem_width),//funct3
+    
+    //wb
+        .ex_rd_addr         (ex_rd_addr),
+        .ex_reg_write_en    (ex_reg_write_en),
+        .ex_wb_sel          (ex_wb_sel),
+        .ex_fence           (ex_fence),
 
-always @(*) begin
-    case (mem_width) //  funct3
-        3'b000: begin // LB (Load Byte, Sign Extended)
-            case (addr_offset)
-                2'b00: load_data_final = {{24{data2cpu_rdata[7]}},  data2cpu_rdata[7:0]};
-                2'b01: load_data_final = {{24{data2cpu_rdata[15]}}, data2cpu_rdata[15:8]};
-                2'b10: load_data_final = {{24{data2cpu_rdata[23]}}, data2cpu_rdata[23:16]};
-                2'b11: load_data_final = {{24{data2cpu_rdata[31]}}, data2cpu_rdata[31:24]};
-            endcase
-        end
-        
-        3'b001: begin // LH (Load Halfword, Sign Extended)
-            // addr_offset  00 / 10
-            if (addr_offset[1] == 1'b0)
-                load_data_final = {{16{data2cpu_rdata[15]}}, data2cpu_rdata[15:0]};
-            else
-                load_data_final = {{16{data2cpu_rdata[31]}}, data2cpu_rdata[31:16]};
-        end
-        
-        3'b010: begin // LW (Load Word)
-            load_data_final = data2cpu_rdata;
-        end
-        
-        3'b100: begin // LBU (Load Byte, Zero Extended)
-            case (addr_offset)
-                2'b00: load_data_final = {24'b0, data2cpu_rdata[7:0]};
-                2'b01: load_data_final = {24'b0, data2cpu_rdata[15:8]};
-                2'b10: load_data_final = {24'b0, data2cpu_rdata[23:16]};
-                2'b11: load_data_final = {24'b0, data2cpu_rdata[31:24]};
-            endcase
-        end
-        
-        3'b101: begin // LHU (Load Halfword, Zero Extended)
-            if (addr_offset[1] == 1'b0)
-                load_data_final = {16'b0, data2cpu_rdata[15:0]};
-            else
-                load_data_final = {16'b0, data2cpu_rdata[31:16]};
-        end
-        
-        default: load_data_final = data2cpu_rdata;
-    endcase
-end
-    //   (Write-back to reg) ---
+        .ex_pc              (ex_pc),
+    
+    //forme ex
+        .ex_alu_result      (alu_result),//store addr or write reg data
+        .ex_updated_rs2     (updated_rs2),//store data
+    
+    // to mem
+        .mem_mem_write_en   (mem_mem_write_en),
+        .mem_mem_read_en    (mem_mem_read_en),
+        .mem_mem_width      (mem_mem_width),
+        .mem_alu_result     (mem_alu_result), //also to wb
+        .mem_updated_rs2    (mem_updated_rs2),//updated_rs2
+    //to mem_wb
+        .mem_rd_addr        (mem_rd_addr),//to forward also
+        .mem_reg_write_en   (mem_reg_write_en),
+        .mem_wb_sel         (mem_wb_sel),
+        .mem_fence          (mem_fence),
+        //to ex
+        .mem_forward_data   (mem_forward_data),
+        .mem_pc             (mem_pc)
+        );
+//link wire
+    wire        [31:0]  mem_load_data;
+   
 
-    wire    [31:0]  rf_write_data;
+mem_stage u_mem_stage (
+        .mem_mem_write_en   (mem_mem_write_en),
+        .mem_mem_read_en    (mem_mem_read_en),
+        .mem_funct3         (mem_mem_width),      
+        .mem_alu_result     (mem_alu_result),  
+        .mem_updated_rs2    (mem_updated_rs2), 
 
-    always @(*) begin
-        if (wb_sel) 
-            rf_write_data = load_data_final; // 从内存读出的数据
-        else        
-            rf_write_data = alu_result;     // ALU 结果 (包含算术结果和 PC+4)
-    end
+        .dmem_rdata         (data2cpu_rdata),      
+        .dmem_gnt           (data2cpu_gnt), //1T ignore it      
+        .dmem_valid         (data2cpu_valid),
+        .dmem_req           (cpu2data_req), //ignore it
+        .mem_write_en       (cpu2data_we),// to data mem
+        .mem_read_en        (cpu2data_rd),
+        .dmem_addr          (cpu2data_addr),//to data mem
+        .dmem_be            (cpu2data_be),
+        .dmem_wdata         (cpu2data_wdata),
 
-wire reg_write_finen = reg_write_en && (mem_read_en ? data2cpu_valid : 1'b1);
-    //  (Register File) 
+        .mem_load_data      (mem_load_data),//to wb    
+        .mem_ready          (mem_ready)//stall to hazard     
+);
+//link wire
+    //wire        [31:0]      wb_data;
+    //wire        [4:0]      wb_addr;
+    //wire                    wb_en;
+    wire            [31:0]      wb_pc;
+ mem_wb u_mem_wb (
+        .clk                (clk),
+        .rst_n              (rst_n),
+        .mem_pc             (mem_pc),
+
+        .stall              (global_stall),
+        .flush              (global_flush),
+
+        .mem_rd_addr        (mem_rd_addr),
+        .mem_reg_write_en   (mem_reg_write_en),
+        .mem_wb_sel         (mem_wb_sel),
+        .mem_fence          (mem_fence),
+        .mem_alu_result     (mem_alu_result),
+        .mem_load_data      (mem_load_data),
+
+        .wb_data            (wb_data),
+        .wb_addr            (wb_addr),
+        .wb_en              (wb_en),
+        .wb_pc              (wb_pc),
+        .wb_fence           (wb_fence)
+        );
+
+
+
+
+        //  (Register File) 
     reg_file u_reg_file (
         .clk      (clk),
         .rst_n    (rst_n),
-        .rs1_addr (rs1_addr),
-        .rs2_addr (rs2_addr),
-        .rd_addr  (rd_addr),
-        .wr_en    (reg_write_finen),
-        .wr_data  (rf_write_data),
-        .rs1_data (rs1_data),
-        .rs2_data (rs2_data)
+        .rs1_addr (id_rs1_addr),
+        .rs2_addr (id_rs2_addr),
+        .rd_addr  (wb_addr),
+        .wr_en    (wb_en),
+        .wr_data  (wb_data),
+        .rs1_data (id_rs1_data),
+        .rs2_data (id_rs2_data)
     );
 
 endmodule

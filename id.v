@@ -4,48 +4,49 @@ module id_stage (
     input   wire    [31:0]  instr_i, // instruction
     input   wire            inst_valid,
     input   wire    [31:0]  inst_pc,
-    // reg_file
+    // reg_file and  addr also to id_ex
     output  wire    [4:0]   rs1_addr,          
-    output  wire    [4:0]   rs2_addr,         
-    output  wire    [4:0]   rd_addr,          
-    output  reg             reg_write_en,
-    output  reg             wb_sel, //write in reg data frome 0:alu 1: mem
+    output  wire    [4:0]   rs2_addr,
     input   wire    [31:0]  rs1_data,
     input   wire    [31:0]  rs2_data,
-    // ALU 
+   
+    // ex 
     output  reg     [3:0]   alu_op,           
-    output  reg     [31:0]  alu_in_a,    
-    output  reg     [31:0]  alu_in_b,
-    output  wire    [1:0]   sign_ab,//rs1/rs2 assign in a/b 10/01
+    output  wire    [31:0]  alu_in_rs1,   
+    output  wire    [31:0]  alu_in_rs2,
+    output  reg     [31:0]  imm_ext,
+    output  reg     [1:0]   alu_a_sel,// ALU A (0:rs1, 1:PC,2:0)
+    output  reg     [1:0]   alu_b_sel,// ALU B (0:rs2, 1:imm 2:4)
+    output  wire            rs1_use,    // and to hazard
+    output  wire            rs2_use,
+    output  reg             jump_r,     //jalr
+    output  reg             branch_en,  // B-type
+
     // Data Memory
-    output  wire    [31:0]  id_rs2_data,
     output  reg             mem_read_en,      // 
     output  reg             mem_write_en,     // 
     output  wire    [2:0]   mem_width,        // (funct3: LB, LH, LW
   
-    // 
-    output  reg             branch_en,        // B-type
+        //to hazard    
     output  reg             jump_en,     // JAL
-    output  reg             jump_r,         //jalr
-    output  reg     [31:0]  pc_jump,
-    
-    output reg              ebreak_en,      // EBREAK
-    output reg              ecall_en,       // ECALL
-    output reg              fence_en,       // FENCE
-    output reg              illegal_instr  ,
-    output wire             rs1_use,
-    output wire             rs2_use
-);
+    output  wire    [31:0]  pc_jump,
+    output  reg              ebreak_en,      // EBREAK
+    output  reg              ecall_en,       // ECALL
+    output  reg              fence_en,       // FENCE
+    output  reg              illegal_instr,
+     // reg_wb_delivey
+    output  wire    [4:0]   rd_addr,          
+    output  reg             reg_write_en,
+    output  reg             wb_sel, //write in reg data frome 0:alu 1: mem
+
+    input   wire            load_stall
+
+    );
    
     wire    [6:0]       opcode = instr_i[6:0];
     wire    [2:0]       funct3 = instr_i[14:12];
     wire    [6:0]       funct7 = instr_i[31:25];
-    reg     [1:0]       alu_a_sel;    // ALU A (00:rs1, 01:PC,10:0)
-    reg     [1:0]       alu_b_sel;  // ALU B (0:rs2, 1:imm 2:4)
-    reg     [31:0]      imm_ext;
-    
-    
-    assign  id_rs2_data     = rs2_data;
+
     assign  rs1_addr        = instr_i[19:15];
     assign  rs2_addr        = instr_i[24:20];
     assign  rd_addr         = instr_i[11:7];//rd is certain write_en is high can write in
@@ -115,7 +116,7 @@ module id_stage (
             end
             `OP_BRANCH: begin // Branch
                 branch_en   = 1;//rs1 - rs2 to judge branch or not 
-                jump_src_sel= 0;
+                //jump_src_sel= 0;
             end
             `OP_LOAD : begin // Load
                 reg_write_en = 1;
@@ -191,32 +192,18 @@ module id_stage (
                         default: alu_op = `ALU_ADD;
         endcase
     end
-    //mux alu_in_a/b
-       always @(*) begin
-        case (alu_a_sel)
-            2'b00:   alu_in_a    = rs1_data;        
-            2'b01:   alu_in_a = inst_pc;
-            2'b10:   alu_in_a = 32'b0;//( LUI : 0 + imm)
-            default: alu_in_a = rs1_data;
-        endcase
-    end
 
-    always @(*) begin
-        case (alu_b_sel)
-            2'b00:   alu_in_b    = rs2_data;
-            2'b01:   alu_in_b   = imm_ext;
-            2'b10:   alu_in_b = 32'd4; //  JAL/JALR  rd = PC + 4
-            default: alu_in_b = rs2_data;
-        endcase
-    end
-    assign sign_ab[1] = (alu_a_sel == 2'b00) ? 1 :0;//ues rs1/2 sign
-    assign sign_ab[0] = (alu_b_sel == 2'b00) ? 1 :0;
+
+    assign alu_in_rs1 = rs1_data;
+    assign alu_in_rs2 = rs2_data;
+
     //jump addr
+assign pc_jump     = (jump_en)  ? inst_pc   + imm_ext   :
+       (fence_en || load_stall) ? inst_pc   + 4         :   0;
 
-
-assign pc_jump     = inst_pc   + imm_ext;
-
-assign rs1_use = (alu_a_sel == 2'b00);
+//jalr rs1 to jump_pc,pc+4 to rd store
+assign rs1_use = (alu_a_sel == 2'b00) || jump_r;
 // store alu_b_sel =1 but rs2 is use
-assign rs2_use = (alu_b_sel == 2'b00) || branch_en || mem_write_en ;
+assign rs2_use = (alu_b_sel == 2'b00) || mem_write_en ;
+
 endmodule

@@ -26,8 +26,11 @@ module reg_file (
             rf[rd_addr] <= wr_data;
         end
     end
-    //read
-    assign rs1_data = (rs1_addr == 5'b0) ? 32'b0 : rf[rs1_addr];
-    assign rs2_data = (rs2_addr == 5'b0) ? 32'b0 : rf[rs2_addr];
+    //read and forward reg hazard
+    assign rs1_data = (rs1_addr == 5'b0) ? 32'b0 : 
+                      ((rs1_addr == rd_addr) && wr_en) ? wr_data : rf[rs1_addr];
+
+    assign rs2_data = (rs2_addr == 5'b0) ? 32'b0 : 
+                      ((rs2_addr == rd_addr) && wr_en) ? wr_data : rf[rs2_addr];
 
 endmodule
