@@ -23,7 +23,10 @@ module ex_stage (
     output  reg     [31:0]  alu_result_o,
     output  reg     [31:0]  updated_rs2,
     output  wire            branch_taken,
-    output  reg     [31:0]  branch_or_jump_pc
+    output  reg     [31:0]  branch_or_jump_pc,
+
+    output  reg     [31:0]  ex_mem_wdata,
+    output  wire    [3:0]   ex_be
 );
     reg     [31:0]  updated_rs1;
     wire            alu_zero_o;
@@ -112,5 +115,24 @@ end
         branch_or_jump_pc = (ex_pc +ex_alu_imm) & 32'hFFFFFFFE;
     end
 
+
+      //1T pre to write in mem data
+    always @(*) begin
+        case (ex_funct3[1:0])
+            2'b00: 
+                ex_mem_wdata = {4{updated_rs2[7:0]}};
+            2'b01: 
+                ex_mem_wdata = {2{updated_rs2[15:0]}};
+            2'b10: // SW
+                ex_mem_wdata = updated_rs2;
+            default: 
+                ex_mem_wdata = updated_rs2;
+        endcase
+    end
+    wire [1:0] addr_offset = alu_result_o[1:0];
+assign ex_be = (ex_funct3[1:0] == 2'b00) ? (4'b0001 << addr_offset) :      // Byte
+                     (ex_funct3[1:0] == 2'b01) ? (4'b0011 << {addr_offset[1], 1'b0}) : // Half 
+                     (ex_funct3[1:0] == 2'b10) ? 4'b1111 :                       // Word
+                                                  4'b0000;
 
 endmodule

@@ -15,7 +15,8 @@ module rv32i_core_top (
     output wire        cpu2data_we, 
     output wire        cpu2data_rd,
     output wire [3:0]  cpu2data_be,        
-    output wire        cpu2data_req,       
+    output wire        cpu2data_req,
+    output wire        imem_stall,
     input  wire        data2cpu_gnt,        
     input  wire [31:0] data2cpu_rdata,      
     input  wire        data2cpu_valid,      
@@ -25,6 +26,14 @@ module rv32i_core_top (
     input  wire        int2cpu_tmr,         
     input  wire        int2cpu_sft          
 );
+
+wire    [31:0]          ex_mem_wdata;
+wire    [3:0]           ex_be;
+assign cpu2data_we  = ex_mem_write_en;
+assign cpu2data_rd  = ex_mem_read_en;
+assign cpu2data_addr= alu_result;
+assign cpu2data_wdata   = ex_mem_wdata;
+assign cpu2data_be      = ex_be;
    //linkwire
     wire            load_stall;
     wire            global_stall;
@@ -36,13 +45,15 @@ module rv32i_core_top (
     wire            mem_ready;
     
    //link wire
-    wire    if_id_stall = load_stall | fence_stall | global_stall;
+    wire    if_id_stall = load_stall | fence_stall | global_stall| !mem_ready;
     wire    [31:0]      if_pc;
     wire    [31:0]      if_inst;
     wire                if_valid;
     wire    [31:0]      jump_pc_if; //hazard to if 
     wire                jump_to_if;
  
+assign imem_stall = if_id_stall;
+
     if_stage u_if(
     .clk        (clk),
     .rst_n      (rst_n),
@@ -197,10 +208,12 @@ module rv32i_core_top (
     wire                ex_fence;
 
     wire        [31:0]  branch_or_jump_pc;
+    wire                id_ex_stall;
+    assign  id_ex_stall = global_stall | mem_stall;
 id_ex u_id_ex (
     .clk            (clk),
     .rst_n          (rst_n),
-    .global_stall   (global_stall),//global stall
+    .global_stall   (id_ex_stall),//global stall
     .stall          (load_stall),//load_use stall
     .flush          (flush_ex_jal),
     //from if_id 
@@ -261,6 +274,7 @@ id_ex u_id_ex (
     );
     wire                wb_fence;    
     wire                mem_fence;
+    wire                mem_stall;
 hazard u_hazard (
     .clk            (clk),
     .rst_n          (rst_n),
@@ -273,6 +287,7 @@ hazard u_hazard (
     .load_stall     (load_stall),
     .fence_stall    (fence_stall),
     .global_stall   (global_stall),
+    .mem_stall      (mem_stall),
     .flush          (flush),
     .flush_ex_jal   (flush_ex_jal),
     .global_flush   (global_flush),
@@ -341,7 +356,9 @@ forward u_forward(
         .alu_result_o       (alu_result),
         .updated_rs2        (updated_rs2),
         .branch_taken       (branch_taken),
-        .branch_or_jump_pc  (branch_or_jump_pc)
+        .branch_or_jump_pc  (branch_or_jump_pc),
+        .ex_mem_wdata       (ex_mem_wdata),
+        .ex_be              (ex_be)
     );
 // link wire
         wire                mem_mem_write_en;
@@ -356,12 +373,12 @@ forward u_forward(
 
         wire        [31:0]  mem_pc;
         
-ex_mem u_mem (
+ex_mem u_ex_mem (
         .clk                (clk),
         .rst_n              (rst_n),
     
         .flush              (global_flush),
-        .stall              (global_stall),
+        .stall              (mem_stall),
     //frome id_ex
     //to mem
         .ex_mem_write_en    (ex_mem_write_en),
@@ -410,11 +427,11 @@ mem_stage u_mem_stage (
         .dmem_gnt           (data2cpu_gnt), //1T ignore it      
         .dmem_valid         (data2cpu_valid),
         .dmem_req           (cpu2data_req), //ignore it
-        .mem_write_en       (cpu2data_we),// to data mem
-        .mem_read_en        (cpu2data_rd),
-        .dmem_addr          (cpu2data_addr),//to data mem
-        .dmem_be            (cpu2data_be),
-        .dmem_wdata         (cpu2data_wdata),
+        .mem_write_en       (),// to data mem
+        .mem_read_en        (),
+        .dmem_addr          (),//to data mem
+        .dmem_be            (),
+        .dmem_wdata         (),
 
         .mem_load_data      (mem_load_data),//to wb    
         .mem_ready          (mem_ready)//stall to hazard     

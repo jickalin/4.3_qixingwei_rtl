@@ -18,7 +18,7 @@ module mem_stage (
     output  reg     [31:0]  mem_load_data,//to wb    
     output  wire            mem_ready   //stall to hazard     
 );
-    assign  dmem_req    = 1'b1;
+    assign  dmem_req    = mem_read_en;
     assign dmem_addr    = mem_alu_result;
     assign mem_write_en = mem_mem_write_en;
     assign mem_read_en  = mem_mem_read_en;
@@ -79,6 +79,6 @@ module mem_stage (
     end
 
 
-    assign mem_ready = (mem_mem_read_en || mem_mem_write_en) ? (dmem_valid) : 1'b1;
+    assign mem_ready = (mem_mem_read_en ) ? (dmem_valid) : 1'b1;
 
 endmodule
