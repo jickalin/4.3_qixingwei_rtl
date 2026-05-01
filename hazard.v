@@ -10,7 +10,6 @@ module hazard (
     output  reg                 load_stall,
     output  wire                fence_stall,
     output  wire                global_stall,
-    output  wire                mem_stall,
     output  wire                flush,
     output  wire                flush_ex_jal,
     output  wire                global_flush,
@@ -26,7 +25,7 @@ module hazard (
     output  reg                 jump_to_if,
     output  reg     [31:0]      jump_pc_if,
 
-    input   wire                mem_ready,
+    
     input   wire                id_ebreak_en,
     input   wire                id_ecall_en,
     input   wire                id_fence_en,
@@ -58,7 +57,7 @@ wire    fence_jump;
     end
 reg     mem_fence_reg;
 
-always @ (posedge clk or negedge rst_n)begin
+always @ (posedge clk )begin
     if(!rst_n) begin
         mem_fence_reg    <= 0;
     end else begin
@@ -69,8 +68,8 @@ end
 assign  fence_jump = mem_fence & (!mem_fence_reg);
 assign flush = branch_taken || jump_en || id_ebreak_en || id_ecall_en ||id_illegal_instr;
 assign flush_ex_jal = branch_taken || id_ebreak_en || id_ecall_en ||id_illegal_instr; //if jal ex is not flush
-assign fence_stall = !mem_ready || (id_fence_en && !wb_fence);
-assign mem_stall    = !mem_ready;
+assign fence_stall = (id_fence_en && !wb_fence);
+
 assign global_flush = 0; 
 assign global_stall = 0;
 endmodule

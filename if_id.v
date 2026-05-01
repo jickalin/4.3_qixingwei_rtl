@@ -23,7 +23,7 @@ module if_id (
     // RISC-V NOP instr: addi x0, x0, 0
     localparam [31:0] NOP = 32'h0000_0013;
 
-    always @(posedge clk or negedge rst_n) begin
+    always @(posedge clk ) begin
         if (!rst_n) begin
             id_pc       <= 32'h0;
             id_inst     <= NOP;

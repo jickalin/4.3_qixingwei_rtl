@@ -3,8 +3,8 @@
 module id_ex (
     input   wire            clk,
     input   wire            rst_n,
-    input   wire            stall, 
-    input   wire            global_stall,
+    input   wire            load_stall, 
+    input   wire            stall,
     input   wire            flush,  
     //  From IF/ID 
     input   wire    [31:0]  id_pc,
@@ -70,7 +70,7 @@ module id_ex (
     
 );
     assign  ex_funct3 = ex_inst[14:12];
-    always @(posedge clk or negedge rst_n) begin
+    always @(posedge clk ) begin
         if (!rst_n) begin
             ex_alu_op       <= 4'b0;
             ex_alu_rs1      <= 32'b0;
@@ -96,7 +96,7 @@ module id_ex (
             ex_reg_write_en  <= 1'b0;
             ex_wb_sel        <= 1'b0;
         end
-        else if (flush || stall) begin
+        else if (flush || load_stall) begin
             ex_alu_op       <= `ALU_ADD;
             ex_alu_rs1      <= 32'b0;
             ex_alu_rs2      <= 32'b0;
@@ -122,7 +122,7 @@ module id_ex (
             ex_wb_sel        <= 1'b0;
     
         end
-        else if (!global_stall) begin
+        else if (!stall) begin
             ex_alu_op       <= id_alu_op;
             ex_alu_rs1      <= id_alu_rs1;
             ex_alu_rs2      <= id_alu_rs2;

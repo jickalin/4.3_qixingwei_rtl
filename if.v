@@ -24,7 +24,7 @@ module if_stage (
     reg                         reg_stall;
 
     // jump > stall > +4
-    always @(posedge clk or negedge rst_n) begin
+    always @(posedge clk ) begin
     if (!rst_n)
         curr_pc <= 32'h0;
     else if (jump_en)
@@ -36,9 +36,9 @@ end
     
     assign  inst_addr = (jump_en)   ? jump_pc  :  
                         ((stall)    ? pc_last  : curr_pc);//jump direct fetch
-    assign  inst_req  = (rst_n) & (jump_en | (!stall) )  ;
+    assign  inst_req  = 1;//(rst_n) & (jump_en | (!stall) )  ;
 
-    always @ (posedge clk  or negedge rst_n) begin
+    always @ (posedge clk  ) begin
         if(!rst_n) begin
         pc_last <= 0;
         reg_stall <= 0;
@@ -51,7 +51,7 @@ end
         reg_stall <= stall;
     end
     end
-always @ (posedge clk  or negedge rst_n) begin
+always @ (posedge clk  ) begin
         if(!rst_n) begin
         reg_inst<= 0;
     end

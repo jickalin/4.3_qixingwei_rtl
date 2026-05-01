@@ -26,7 +26,7 @@ reg     [31:0]  wb_load_data;
 reg             wb_sel;
     assign wb_data = wb_sel ?   wb_load_data : wb_alu_result;
 
-always @(posedge clk or negedge rst_n) begin
+always @(posedge clk ) begin
     if(!rst_n) begin
 
         wb_addr         <= 0;

@@ -21,7 +21,6 @@ module ex_stage (
     input   wire    [31:0]  wb_forward_data,
     
     output  reg     [31:0]  alu_result_o,
-    output  reg     [31:0]  updated_rs2,
     output  wire            branch_taken,
     output  reg     [31:0]  branch_or_jump_pc,
 
@@ -29,6 +28,7 @@ module ex_stage (
     output  wire    [3:0]   ex_be
 );
     reg     [31:0]  updated_rs1;
+    reg     [31:0]  updated_rs2;
     wire            alu_zero_o;
 always @(*) begin
     updated_rs1 = ex_alu_rs1;

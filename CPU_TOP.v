@@ -1,58 +1,130 @@
 `include "risc-v_defines.vh"
 module rv32i_core_top (
     input  wire        clk,                 
-    input  wire        rst_n,       
+    input  wire        rst_n,
 
-    // 指令存储器接口 (Instruction Memory Interface)
-    output wire [31:0] cpu2instr_addr,       
-    output wire        cpu2instr_req,       
-    input  wire        instr2cpu_valid,   //1T can ignore it    
-    input  wire [31:0] instr2cpu_rdata,     
+    
+    // instruction port (AXI-Lite Read-Only Master)
+    // Read Address Channel
+    output wire [31:0]  m_axi_instr_araddr,
+    output wire         m_axi_instr_arvalid,
+    output wire [2:0]   m_axi_instr_arprot,
+    input  wire         m_axi_instr_arready,
+    // Read Data Channel
+    input  wire [31:0]  m_axi_instr_rdata,
+    input  wire [1:0]   m_axi_instr_rresp,
+    input  wire         m_axi_instr_rvalid,
+    output wire         m_axi_instr_rready,
 
-    // 数据存储器接口 (Data Memory Interface)
-    output wire [31:0] cpu2data_addr,       
-    output wire [31:0] cpu2data_wdata,      
-    output wire        cpu2data_we, 
-    output wire        cpu2data_rd,
-    output wire [3:0]  cpu2data_be,        
-    output wire        cpu2data_req,
-    output wire        imem_stall,
-    input  wire        data2cpu_gnt,        
-    input  wire [31:0] data2cpu_rdata,      
-    input  wire        data2cpu_valid,      
+    // =========================================================================
+    // data port (AXI-Lite Full Master)
+    // =========================================================================
+    // Write Address Channel
+    output wire [31:0]  m_axi_data_awaddr,
+    output wire [2:0]   m_axi_data_awprot,
+    output wire         m_axi_data_awvalid,
+    input  wire         m_axi_data_awready,
+    // Write Data Channel
+    output wire [31:0]  m_axi_data_wdata,
+    output wire [3:0]   m_axi_data_wstrb,
+    output wire         m_axi_data_wvalid,
+    input  wire         m_axi_data_wready,
+    // Write Response Channel
+    input  wire [1:0]   m_axi_data_bresp,
+    input  wire         m_axi_data_bvalid,
+    output wire         m_axi_data_bready,
+    // Read Address Channel
+    output wire [31:0]  m_axi_data_araddr,
+    output wire         m_axi_data_arvalid,
+    output wire [2:0]   m_axi_data_arprot,
+    input  wire         m_axi_data_arready,
+    // Read Data Channel
+    input  wire [31:0]  m_axi_data_rdata,
+    input  wire [1:0]   m_axi_data_rresp,
+    input  wire         m_axi_data_rvalid,
+    output wire         m_axi_data_rready,
 
-    // 中断接口
     input  wire        int2cpu_ext,         
     input  wire        int2cpu_tmr,         
-    input  wire        int2cpu_sft          
+    input  wire        int2cpu_sft 
 );
+    //instr
+    wire [31:0] cpu2instr_addr;
+    wire        cpu2instr_req;
+    wire        instr2cpu_valid;
+    wire [31:0] instr2cpu_rdata;
+    //data
+    wire [31:0] cpu2data_addr;
+    wire [31:0] cpu2data_wdata;
+    wire        cpu2data_we;
+    wire        cpu2data_rd;
+    wire [3:0]  cpu2data_be;
+    wire [31:0] data2cpu_rdata;
+    wire        data2cpu_valid;
+       
+    // instr read address chananel assign
+    assign  m_axi_instr_araddr      = cpu2instr_addr;
+    assign  m_axi_instr_arprot      = 3'b100;//unprivileged  secure instr
+    assign  m_axi_instr_arvalid     = cpu2instr_req;
+        
+    // instr read data channel assign
+    assign  instr2cpu_rdata         = m_axi_instr_rdata;
+    // assign read_data_error = m_axi_instr_rresp;// resp[1] = 0 is erro 
+    assign  instr2cpu_valid         = m_axi_instr_rvalid;
+    assign  m_axi_instr_rready      = 1; // cpu is always ready receive instr
 
-wire    [31:0]          ex_mem_wdata;
-wire    [3:0]           ex_be;
-assign cpu2data_we  = ex_mem_write_en;
-assign cpu2data_rd  = ex_mem_read_en;
-assign cpu2data_addr= alu_result;
-assign cpu2data_wdata   = ex_mem_wdata;
-assign cpu2data_be      = ex_be;
-   //linkwire
+    // data port
+       
+    // write address channel
+    assign m_axi_data_awaddr        = cpu2data_addr;
+    assign m_axi_data_awprot        = 3'b000; // unprivileged secure data
+    assign m_axi_data_awvalid       = cpu2data_we;
+        
+    // write data channel
+    assign m_axi_data_wdata         = cpu2data_wdata;
+    assign m_axi_data_wstrb         = cpu2data_be;   // be = wstrb
+    assign m_axi_data_wvalid        = cpu2data_we;
+    // write response channel
+    // m_axi_data_bresp         != 00 ;
+    // m_axi_data_bvalid         = 0  ;  is error
+    assign m_axi_data_bready        = 1'b1;//cpu receive data is always ready
+
+    // read address channel
+    assign m_axi_data_araddr        = cpu2data_addr;
+    assign m_axi_data_arprot        = 3'b000; // unprivileged secure data
+    assign m_axi_data_arvalid       = cpu2data_rd;
+        // ready data channel
+    assign data2cpu_rdata           = m_axi_data_rdata;
+    // m_axi_data_rresp[1] = 1 is error ;
+    assign data2cpu_valid           = m_axi_data_rvalid;
+    assign m_axi_data_rready        = 1'b1; 
+
+  
+
+   //link wire  global sign
+    wire            mem_stall;
     wire            load_stall;
     wire            global_stall;
     wire            fence_stall;
+    wire            if_id_stall;
+    wire            id_ex_stall;
+    wire            ex_mem_stall;
+    
+
+
     wire            flush;
     wire            flush_ex_jal;
     wire            global_flush;
     wire            branch_taken;
-    wire            mem_ready;
+  
     
    //link wire
-    wire    if_id_stall = load_stall | fence_stall | global_stall| !mem_ready;
     wire    [31:0]      if_pc;
     wire    [31:0]      if_inst;
     wire                if_valid;
     wire    [31:0]      jump_pc_if; //hazard to if 
     wire                jump_to_if;
  
-assign imem_stall = if_id_stall;
 
     if_stage u_if(
     .clk        (clk),
@@ -174,7 +246,7 @@ assign imem_stall = if_id_stall;
         .reg_write_en   (id_reg_write_en),
         .wb_sel         (id_wb_sel),
         
-        .load_stall     (load_stall)
+        .load_stall     (load_stall) //input load_stall to give if_stage pc+4
 
     );
     // link wire
@@ -198,6 +270,8 @@ assign imem_stall = if_id_stall;
     wire                ex_mem_read_en;
     wire                ex_mem_write_en;
     wire        [2:0]   ex_mem_width;
+    wire        [31:0]  ex_mem_wdata;
+    wire        [3:0]   ex_be;
     //delivery 
     wire        [31:0]  ex_pc;
     wire        [31:0]  ex_inst;
@@ -208,13 +282,12 @@ assign imem_stall = if_id_stall;
     wire                ex_fence;
 
     wire        [31:0]  branch_or_jump_pc;
-    wire                id_ex_stall;
-    assign  id_ex_stall = global_stall | mem_stall;
+        
 id_ex u_id_ex (
     .clk            (clk),
     .rst_n          (rst_n),
-    .global_stall   (id_ex_stall),//global stall
-    .stall          (load_stall),//load_use stall
+    .stall          (id_ex_stall),
+    .load_stall     (load_stall),//load_use stall
     .flush          (flush_ex_jal),
     //from if_id 
     .id_pc          (if_id_pc),
@@ -272,9 +345,11 @@ id_ex u_id_ex (
     .ex_reg_write_en(ex_reg_write_en),
     .ex_wb_sel      (ex_wb_sel)
     );
-    wire                wb_fence;    
-    wire                mem_fence;
-    wire                mem_stall;
+    wire                wb_fence; //fence sign transform to wb_stage   
+    wire                mem_fence;//fence sign transform to mem_stage
+    
+
+
 hazard u_hazard (
     .clk            (clk),
     .rst_n          (rst_n),
@@ -287,7 +362,7 @@ hazard u_hazard (
     .load_stall     (load_stall),
     .fence_stall    (fence_stall),
     .global_stall   (global_stall),
-    .mem_stall      (mem_stall),
+    
     .flush          (flush),
     .flush_ex_jal   (flush_ex_jal),
     .global_flush   (global_flush),
@@ -302,7 +377,7 @@ hazard u_hazard (
     .jump_to_if      (jump_to_if),
     .jump_pc_if      (jump_pc_if),
 
-    .mem_ready          (mem_ready),
+    
     .id_ebreak_en       (id_ebreak_en),
     .id_ecall_en        (id_ecall_en),
     .id_fence_en        (id_fence_en),
@@ -311,12 +386,12 @@ hazard u_hazard (
 );
 //link wire
 
-    wire        [4:0]   mem_rd_addr;
-    wire        [4:0]      wb_addr;
-    wire                mem_reg_write_en;
-    wire                wb_en;
-    wire    [1:0]   mem_forward_en;//[1] rs1 [0] rs2
-    wire    [1:0]   wb_forward_en;
+    wire        [4:0]       mem_rd_addr;
+    wire        [4:0]       wb_addr;
+    wire                    mem_reg_write_en;
+    wire                    wb_en;
+    wire        [1:0]       mem_forward_en;//[1] rs1 [0] rs2
+    wire        [1:0]       wb_forward_en;
 forward u_forward(
     .for_id_rs1         (ex_rs1_addr),
     .for_id_rs2         (ex_rs2_addr),
@@ -331,10 +406,9 @@ forward u_forward(
  ); 
 
  //link wire 
- wire   [31:0]  mem_forward_data;
- wire   [31:0]  updated_rs2;
- wire   [31:0]  alu_result;
- wire        [31:0]      wb_data;
+ wire       [31:0]      mem_forward_data;
+ wire       [31:0]      alu_result;
+ wire       [31:0]      wb_data;
 
     ex_stage u_ex (
         .ex_alu_op          (ex_alu_op),
@@ -354,21 +428,17 @@ forward u_forward(
         .mem_forward_data   (mem_forward_data),
         .wb_forward_data    (wb_data),
         .alu_result_o       (alu_result),
-        .updated_rs2        (updated_rs2),
         .branch_taken       (branch_taken),
         .branch_or_jump_pc  (branch_or_jump_pc),
         .ex_mem_wdata       (ex_mem_wdata),
         .ex_be              (ex_be)
     );
-// link wire
+    // link wire
         wire                mem_mem_write_en;
         wire                mem_mem_read_en;
         wire        [2:0]   mem_mem_width;
         wire        [31:0]  mem_alu_result; //also to wb
-        wire        [31:0]  mem_updated_rs2;//updated_rs2
     //to mem_wb
-        //wire        [4:0]   mem_rd_addr;
-        //wire                mem_reg_write_en;
         wire                mem_wb_sel;
 
         wire        [31:0]  mem_pc;
@@ -378,7 +448,7 @@ ex_mem u_ex_mem (
         .rst_n              (rst_n),
     
         .flush              (global_flush),
-        .stall              (mem_stall),
+        .stall              (ex_mem_stall),
     //frome id_ex
     //to mem
         .ex_mem_write_en    (ex_mem_write_en),
@@ -395,15 +465,14 @@ ex_mem u_ex_mem (
     
     //forme ex
         .ex_alu_result      (alu_result),//store addr or write reg data
-        .ex_updated_rs2     (updated_rs2),//store data
+        
     
     // to mem
         .mem_mem_write_en   (mem_mem_write_en),
         .mem_mem_read_en    (mem_mem_read_en),
         .mem_mem_width      (mem_mem_width),
         .mem_alu_result     (mem_alu_result), //also to wb
-        .mem_updated_rs2    (mem_updated_rs2),//updated_rs2
-    //to mem_wb
+        //to mem_wb
         .mem_rd_addr        (mem_rd_addr),//to forward also
         .mem_reg_write_en   (mem_reg_write_en),
         .mem_wb_sel         (mem_wb_sel),
@@ -420,33 +489,23 @@ mem_stage u_mem_stage (
         .mem_mem_write_en   (mem_mem_write_en),
         .mem_mem_read_en    (mem_mem_read_en),
         .mem_funct3         (mem_mem_width),      
-        .mem_alu_result     (mem_alu_result),  
-        .mem_updated_rs2    (mem_updated_rs2), 
+        .addr_offset        (mem_alu_result[1:0]),  
+        
 
-        .dmem_rdata         (data2cpu_rdata),      
-        .dmem_gnt           (data2cpu_gnt), //1T ignore it      
+        .dmem_rdata         (data2cpu_rdata),          
         .dmem_valid         (data2cpu_valid),
-        .dmem_req           (cpu2data_req), //ignore it
-        .mem_write_en       (),// to data mem
-        .mem_read_en        (),
-        .dmem_addr          (),//to data mem
-        .dmem_be            (),
-        .dmem_wdata         (),
 
-        .mem_load_data      (mem_load_data),//to wb    
-        .mem_ready          (mem_ready)//stall to hazard     
+        .mem_load_data      (mem_load_data)//to wb    
+             
 );
 //link wire
-    //wire        [31:0]      wb_data;
-    //wire        [4:0]      wb_addr;
-    //wire                    wb_en;
     wire            [31:0]      wb_pc;
  mem_wb u_mem_wb (
         .clk                (clk),
         .rst_n              (rst_n),
         .mem_pc             (mem_pc),
 
-        .stall              (global_stall),
+        .stall              (mem_wb_stall),
         .flush              (global_flush),
 
         .mem_rd_addr        (mem_rd_addr),
@@ -478,6 +537,27 @@ mem_stage u_mem_stage (
         .rs1_data (id_rs1_data),
         .rs2_data (id_rs2_data)
     );
+
+
+    //ex_stage give data_mem sign  1T advance because 1T delay output data
+assign cpu2data_we      = ex_mem_write_en;
+assign cpu2data_rd      = ex_mem_read_en;
+assign cpu2data_addr    = alu_result;
+assign cpu2data_wdata   = ex_mem_wdata;
+assign cpu2data_be      = ex_be;
+
+
+
+assign id_ex_stall      = mem_stall | global_stall;
+assign if_id_stall      = mem_stall | global_stall | fence_stall | load_stall;
+assign ex_mem_stall     = mem_stall | global_stall;
+assign mem_wb_stall     = mem_stall | global_stall;
+// external mem not being ready case stall called mem_stall
+assign mem_stall = (m_axi_data_awvalid && !m_axi_data_awready)  || //write data address 
+                   (m_axi_data_wvalid  && !m_axi_data_wready)   || //write data
+                   (m_axi_data_arvalid && !m_axi_data_arready)  || //ready data address
+                   (m_axi_instr_arvalid && !m_axi_instr_arready);  //instr memory address stall  // instr data stall cannot happen
+
 
 endmodule
 
