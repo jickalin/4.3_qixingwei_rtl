@@ -1,5 +1,10 @@
 `include "risc-v_defines.vh"
-module rv32i_core_top (
+module rv32i_core_top #(
+    parameter BTB_SETS  = 32,
+    parameter BHT_SIZE  = 1024,
+    parameter GHR_WIDTH = 10,
+    parameter RAS_SIZE  = 8
+)(
     input  wire        clk,                 
     input  wire        rst_n,
 
@@ -124,8 +129,26 @@ module rv32i_core_top (
     wire                if_valid;
     wire    [31:0]      jump_pc_if; //hazard to if 
     wire                jump_to_if;
- 
-
+    // 定义分支预测的信号线
+    wire                fetch_valid;
+    wire                pred_taken;
+    wire    [31:0]      pred_target;
+    wire    [GHR_WIDTH + 10 + $clog2(RAS_SIZE) : 0] pred_info;
+    wire                if_pred_taken;
+    wire    [31:0]      if_pred_target;
+    wire    [GHR_WIDTH + 10 + $clog2(RAS_SIZE) : 0] if_pred_info;
+    wire                id_pred_taken;
+    wire    [31:0]      id_pred_target;
+    wire    [GHR_WIDTH + 10 + $clog2(RAS_SIZE) : 0] id_pred_info;
+    wire    [1:0]       id_branch_type;
+    wire                ex_pred_taken;
+    wire    [31:0]      ex_pred_target;
+    wire    [GHR_WIDTH + 10 + $clog2(RAS_SIZE) : 0] ex_pred_info;
+    wire    [1:0]       ex_branch_type;
+    wire                update_en;
+    wire                actual_taken;
+    wire                mispredict;
+    wire    [31:0]       ex_recover_pc;
     if_stage u_if(
     .clk        (clk),
     .rst_n      (rst_n),
@@ -142,7 +165,17 @@ module rv32i_core_top (
     .jump_en    (jump_to_if),    // jump or branch enable
     .if_pc          (if_pc),         
     .if_inst        (if_inst),  
-    .if_valid       (if_valid)
+    .if_valid       (if_valid),
+    //增加分支预测的端口,fench pc直接选cpu2instr_addr
+    .fetch_valid    (fetch_valid),
+    .pred_taken     (pred_taken),
+    .pred_target    (pred_target),
+    .pred_info      (pred_info),
+    // 分支预测传递给后面的
+    .if_pred_taken  (if_pred_taken),
+    .if_pred_target (if_pred_target),
+    .if_pred_info   (if_pred_info)
+
         );
 
 
@@ -165,10 +198,18 @@ module rv32i_core_top (
     .if_pc      (if_pc),
     .if_inst    (if_inst),
     .if_valid   (if_valid),
+    .if_pred_taken  (if_pred_taken),
+    .if_pred_target (if_pred_target),
+    .if_pred_info   (if_pred_info),
+
     // sent to  ID 
     .id_pc      (if_id_pc),
     .id_inst    (if_id_inst),
     .id_valid   (if_id_valid),
+    .id_pred_taken  (id_pred_taken),
+    .id_pred_target (id_pred_target),
+    .id_pred_info   (id_pred_info),
+
     //to hazard
     .if_id_rs1  (if_id_rs1),
     .if_id_rs2  (if_id_rs2)
@@ -246,8 +287,8 @@ module rv32i_core_top (
         .reg_write_en   (id_reg_write_en),
         .wb_sel         (id_wb_sel),
         
-        .load_stall     (load_stall) //input load_stall to give if_stage pc+4
-
+        .load_stall     (load_stall), //input load_stall to give if_stage pc+4
+        .id_branch_type (id_branch_type)
     );
     // link wire
     wire        [3:0]   ex_alu_op;
@@ -259,6 +300,7 @@ module rv32i_core_top (
     wire                ex_rs1_use;
     wire                ex_rs2_use;
     wire        [2:0]   ex_funct3;
+    wire                ex_jal;
     wire                ex_branch_en;
     wire                ex_jump_r;
 
@@ -293,6 +335,10 @@ id_ex u_id_ex (
     .id_pc          (if_id_pc),
     .id_inst        (if_id_inst),
     .id_valid       (if_id_valid),
+    .id_pred_taken  (id_pred_taken),
+    .id_pred_target (id_pred_target),
+    .id_pred_info   (id_pred_info),
+    .id_branch_type (id_branch_type),
     //from id
     .id_alu_op      (id_alu_op),
     .id_alu_rs1     (id_alu_rs1),
@@ -302,6 +348,7 @@ id_ex u_id_ex (
     .id_b_sel       (id_alu_b_sel),
     .id_rs1_use     (id_rs1_use),
     .id_rs2_use     (id_rs2_use),
+    .id_jal         (id_jump_en),//这个是jal指令，下面的是jalr指令
     .id_branch_en   (id_branch_en),
     .id_jump_r      (id_jump_r),
     
@@ -326,6 +373,7 @@ id_ex u_id_ex (
     .ex_rs1_use     (ex_rs1_use),//also to forward hazard
     .ex_rs2_use     (ex_rs2_use),
     .ex_funct3      (ex_funct3),//also to ex_mem sign byte hw w word 
+    .ex_jal         (ex_jal),
     .ex_branch_en   (ex_branch_en),
     .ex_jump_r      (ex_jump_r),
     //to forward and next pipel reg
@@ -340,10 +388,16 @@ id_ex u_id_ex (
     .ex_pc          (ex_pc),
     .ex_inst        (ex_inst),
     .ex_valid       (ex_valid),
+    .ex_pred_taken  (ex_pred_taken),//输入给ex
+    .ex_pred_target (ex_pred_target),//输入给ex，对比有没有预测错误
+    .ex_pred_info   (ex_pred_info),//预测信息，返回
+    .ex_branch_type (ex_branch_type),
     //wb
     .ex_rd_addr     (ex_rd_addr),//also to hazard
     .ex_reg_write_en(ex_reg_write_en),
     .ex_wb_sel      (ex_wb_sel)
+    //给id_ex，最后给bpu的分支类别
+    
     );
     wire                wb_fence; //fence sign transform to wb_stage   
     wire                mem_fence;//fence sign transform to mem_stage
@@ -368,9 +422,10 @@ hazard u_hazard (
     .global_flush   (global_flush),
 
     //jump or branch
+    .mispredict      (mispredict),//ex阶段来的预测错误和恢复pc
+    .ex_recover_pc   (ex_recover_pc),
     .jump_en         (id_jump_en),
     .jump_pc         (id_jump_pc),
-    .branch_taken    (branch_taken),
     .branch_pc       (branch_or_jump_pc),//alu to hazard
     .wb_fence        (wb_fence),
     .mem_fence       (mem_fence),
@@ -420,15 +475,22 @@ forward u_forward(
         .ex_rs1_use         (ex_rs1_use),
         .ex_rs2_use         (ex_rs2_use),
         .ex_funct3          (ex_funct3),
+        .ex_jal             (ex_jal),
         .ex_branch_en       (ex_branch_en),
         .ex_jump_r          (ex_jump_r),
         .ex_pc              (ex_pc),
+        .ex_pred_taken      (ex_pred_taken),
+        .ex_pred_target     (ex_pred_target),
+        .update_en          (update_en),
+        .actual_taken       (actual_taken),
+        .mispredict         (mispredict),//预测错误和恢复pc
+        .ex_recover_pc      (ex_recover_pc),
         .mem_forward_en     (mem_forward_en),//forward
         .wb_forward_en      (wb_forward_en),
         .mem_forward_data   (mem_forward_data),
         .wb_forward_data    (wb_data),
         .alu_result_o       (alu_result),
-        .branch_taken       (branch_taken),
+       // .branch_taken       (branch_taken),
         .branch_or_jump_pc  (branch_or_jump_pc),
         .ex_mem_wdata       (ex_mem_wdata),
         .ex_be              (ex_be)
@@ -537,6 +599,37 @@ mem_stage u_mem_stage (
         .rs1_data (id_rs1_data),
         .rs2_data (id_rs2_data)
     );
+
+bpu u_bpu (
+        .clk          (clk),
+        .rst_n        (rst_n),
+
+        // --- 取指阶段 (IF) 接口 ---
+        .fetch_pc     (cpu2instr_addr),     // [In] 当前取指地址
+        .fetch_valid  (fetch_valid),       // [In] 取指有效信号
+        .pred_taken   (pred_taken),        // [Out] 预测跳转信号 (给 IF 阶段)
+        .pred_target  (pred_target),       // [Out] 预测目标地址 (给 IF 阶段)
+        .pred_info    (pred_info),         
+
+        // --- 执行/提交阶段 (Update) 接口 ---
+        .update_en    (update_en),         // [In] 更新使能信号
+        .update_pc    (ex_pc),         // [In] 产生分支的指令 PC
+        .actual_target(branch_or_jump_pc),// [In] 实际计算出的跳转地址
+        .actual_taken (actual_taken),      // [In] 实际的跳转方向
+        .branch_type  (ex_branch_type),       // [In] 分支类型 (00:Branch, 01:Call, 10:Ret)
+        // [In] 回传的预测元信息 (由 pred_info 传递而来)
+        .old_pred_info(ex_pred_info),     
+        .mispredict   (mispredict),        // [In] 误预测标志
+
+    // --- 流水线控制 ---
+        .stall        (if_id_stall),             // [In] 流水线暂停
+        .flush        (flush)              // [In] 流水线冲刷
+);
+
+
+
+
+
 
 
     //ex_stage give data_mem sign  1T advance because 1T delay output data

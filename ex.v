@@ -11,9 +11,21 @@ module ex_stage (
     input   wire            ex_rs1_use, 
     input   wire            ex_rs2_use,
     input   wire    [2:0]   ex_funct3,
+    input   wire            ex_jal,
     input   wire            ex_branch_en,
     input   wire            ex_jump_r,
     input   wire    [31:0]  ex_pc,
+    //输入预测结果  
+    input   wire            ex_pred_taken,
+    input   wire    [31:0]  ex_pred_target,
+
+
+    //输出给bpu信息 当前pc从id_ex输出，实际条状pc从branch_or_jump_pc输出
+    output  wire            update_en,
+    output  wire            actual_taken,
+    output  wire            mispredict,//这个给hazard产生flush信号，重新取ex_recover_pc
+    output  wire    [31:0]  ex_recover_pc,
+
 
     input   wire    [1:0]   mem_forward_en,//[1] a [0] b
     input   wire    [1:0]   wb_forward_en,
@@ -21,12 +33,13 @@ module ex_stage (
     input   wire    [31:0]  wb_forward_data,
     
     output  reg     [31:0]  alu_result_o,
-    output  wire            branch_taken,
+   // output  wire            pred_branch_taken,//为什么写这个想不起来了
     output  reg     [31:0]  branch_or_jump_pc,
 
     output  reg     [31:0]  ex_mem_wdata,
     output  wire    [3:0]   ex_be
 );
+    wire            branch_taken;
     reg     [31:0]  updated_rs1;
     reg     [31:0]  updated_rs2;
     wire            alu_zero_o;
@@ -111,7 +124,7 @@ end
     branch_or_jump_pc = 32'b0;
     if(ex_jump_r)
         branch_or_jump_pc = (updated_rs1 + ex_alu_imm) & 32'hFFFFFFFE;
-    else if(ex_branch_en)
+    else if(ex_branch_en | ex_jal)
         branch_or_jump_pc = (ex_pc +ex_alu_imm) & 32'hFFFFFFFE;
     end
 
@@ -135,4 +148,11 @@ assign ex_be = (ex_funct3[1:0] == 2'b00) ? (4'b0001 << addr_offset) :      // By
                      (ex_funct3[1:0] == 2'b10) ? 4'b1111 :                       // Word
                                                   4'b0000;
 
+
+//给bpu的信息
+    assign update_en        =  ex_branch_en || ex_jump_r || ex_jal;//告诉bpu这是跳转指令，进行学习
+    assign actual_taken     = (ex_branch_en && branch_taken) || ex_jal || ex_jump_r; 
+    assign mispredict       = (actual_taken != ex_pred_taken) || 
+                              (actual_taken && (branch_or_jump_pc != ex_pred_target));
+    assign ex_recover_pc    = actual_taken ? branch_or_jump_pc : (ex_pc + 4);
 endmodule

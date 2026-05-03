@@ -55,14 +55,14 @@ module axi_lite_cont (
     assign bram_addr = s_axi_arvalid ? s_axi_araddr[13:2] : s_axi_awaddr[13:2];
     assign bram_wdata = s_axi_wdata;
 
-    // 读数据返回逻辑 (BRAM 通常 1 拍延迟)
+    // BRAM 1T latency
     reg rvalid_reg;
     always @(posedge clk) begin
         if (!rst_n) rvalid_reg <= 1'b0;
         else rvalid_reg <= s_axi_arvalid && s_axi_arready;
     end
     assign s_axi_rvalid = rvalid_reg;
-    assign s_axi_rdata  = bram_rdata;
+    assign s_axi_rdata  = bram_rdata;//这样数据和有效信号对齐
 
     // 写响应返回逻辑
     reg bvalid_reg;

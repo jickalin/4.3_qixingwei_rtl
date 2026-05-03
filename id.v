@@ -28,7 +28,7 @@ module id_stage (
     output  wire    [2:0]   mem_width,        // (funct3: LB, LH, LW
   
         //to hazard    
-    output  reg             jump_en,     // JAL
+    output  reg             jump_en,     // JAL 因为bpu模块统一返回将jal也给到id_ex然后传递过去
     output  wire    [31:0]  pc_jump,
     output  reg              ebreak_en,      // EBREAK
     output  reg              ecall_en,       // ECALL
@@ -39,7 +39,9 @@ module id_stage (
     output  reg             reg_write_en,
     output  reg             wb_sel, //write in reg data frome 0:alu 1: mem
 
-    input   wire            load_stall
+    input   wire            load_stall,
+    //给id_ex，最后给bpu，的分支类别
+    output  wire    [1:0]   id_branch_type
 
     );
    
@@ -51,7 +53,9 @@ module id_stage (
     assign  rs2_addr        = instr_i[24:20];
     assign  rd_addr         = instr_i[11:7];//rd is certain write_en is high can write in
     assign  mem_width       = funct3; 
-
+    // 链接寄存器识别 (RISC-V 规范建议 x1 和 x5 作为链接寄存器)
+    wire rd_link  = (rd_addr  == 5'd1 || rd_addr  == 5'd5);
+    wire rs1_link = (rs1_addr == 5'd1 || rs1_addr == 5'd5);
     // Imm Gen
     always @(*) begin
         case (opcode)
@@ -197,7 +201,7 @@ module id_stage (
     assign alu_in_rs1 = rs1_data;
     assign alu_in_rs2 = rs2_data;
 
-    //jump addr
+    //jump addr  这里还有之前写的stall的时候重新取指的逻辑
 assign pc_jump     = (jump_en)  ? inst_pc   + imm_ext   :
        (fence_en || load_stall) ? inst_pc   + 4         :   0;
 
@@ -205,5 +209,15 @@ assign pc_jump     = (jump_en)  ? inst_pc   + imm_ext   :
 assign rs1_use = (alu_a_sel == 2'b00) || jump_r;
 // store alu_b_sel =1 but rs2 is use
 assign rs2_use = (alu_b_sel == 2'b00) || mem_write_en ;
+
+//要在id阶段给分支区分类别
+wire   call_instr   = (jump_en && rd_link) || (jump_r && rd_link);
+wire   ret_instr    = jump_r && (!rd_link && rs1_link);
+wire   jalr_exchange    = jump_r && (rd_link && rs1_link && (rd_addr != rs1_addr));
+assign id_branch_type = (branch_en)                     ? 2'b00 :
+                        (call_instr || jalr_exchange)   ? 2'b01 :
+                        (ret_instr)                     ? 2'b10 :
+                        2'b00;
+
 
 endmodule

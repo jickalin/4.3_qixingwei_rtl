@@ -1,6 +1,11 @@
 `include "risc-v_defines.vh"
 
-module id_ex (
+module id_ex #(
+    parameter BTB_SETS  = 32,
+    parameter BHT_SIZE  = 1024,
+    parameter GHR_WIDTH = 10,
+    parameter RAS_SIZE  = 8
+)(
     input   wire            clk,
     input   wire            rst_n,
     input   wire            load_stall, 
@@ -10,7 +15,11 @@ module id_ex (
     input   wire    [31:0]  id_pc,
     input   wire    [31:0]  id_inst,
     input   wire            id_valid,
-
+    input   wire            id_pred_taken,
+    input   wire    [31:0]  id_pred_target,
+    input   wire    [GHR_WIDTH + 10 + $clog2(RAS_SIZE) : 0] id_pred_info,
+    //id阶段得出的分支类型
+    input   wire    [1:0]   id_branch_type,
     //  From ID Decode   
     //to ex
     input   wire    [3:0]   id_alu_op,
@@ -21,6 +30,7 @@ module id_ex (
     input   wire    [1:0]   id_b_sel,
     input   wire            id_rs1_use,
     input   wire            id_rs2_use,
+    input   wire            id_jal,
     input   wire            id_branch_en,
     input   wire            id_jump_r,
 
@@ -38,7 +48,8 @@ module id_ex (
     input   wire    [4:0]   id_rs1_addr,     
     input   wire    [4:0]   id_rs2_addr,   
 
-    //  To EX Stage 
+    //  To EX Stage
+    
     output  reg     [3:0]   ex_alu_op,
     output  reg     [31:0]  ex_alu_rs1,//a
     output  reg     [31:0]  ex_alu_rs2,//b also to ex_mem
@@ -48,6 +59,7 @@ module id_ex (
     output  reg             ex_rs1_use,//also to forward hazard 
     output  reg             ex_rs2_use,
     output  wire    [2:0]   ex_funct3,//also to ex_mem sign byte hw word
+    output  reg             ex_jal,
     output  reg             ex_branch_en,
     output  reg             ex_jump_r,
     //
@@ -63,6 +75,10 @@ module id_ex (
     output  reg     [31:0]  ex_pc,//to ex also
     output  reg     [31:0]  ex_inst,
     output  reg             ex_valid,
+    output  reg             ex_pred_taken,//分支预测指令也需要pc，直接从这里拿走就好
+    output  reg     [31:0]  ex_pred_target,
+    output  reg     [GHR_WIDTH + 10 + $clog2(RAS_SIZE) : 0] ex_pred_info,
+    output  reg     [1:0]   ex_branch_type,
     //wb
     output  reg     [4:0]   ex_rd_addr,
     output  reg             ex_reg_write_en,
@@ -80,6 +96,7 @@ module id_ex (
             ex_b_sel        <= 2'b0;
             ex_rs1_use      <= 1'b0;
             ex_rs2_use      <= 1'b0;
+            ex_jal          <= 1'b0;
             ex_branch_en    <= 1'b0;
             ex_jump_r       <= 1'b0;
             ex_rs1_addr     <= 5'b0;
@@ -93,6 +110,10 @@ module id_ex (
             ex_pc         <= 32'b0;
             ex_inst       <= 32'b0;
             ex_valid      <= 1'b0;
+            ex_pred_taken   <= 0;
+            ex_pred_target  <= 0;
+            ex_pred_info    <= 0;
+            ex_branch_type  <= 0;
             ex_reg_write_en  <= 1'b0;
             ex_wb_sel        <= 1'b0;
         end
@@ -105,6 +126,7 @@ module id_ex (
             ex_b_sel        <= 2'b0;
             ex_rs1_use      <= 1'b0;
             ex_rs2_use      <= 1'b0;
+            ex_jal          <= 1'b0;
             ex_branch_en    <= 1'b0;
             ex_jump_r       <= 1'b0;
             ex_rs1_addr     <= 5'b0;
@@ -115,9 +137,13 @@ module id_ex (
             ex_mem_write_en <= 1'b0;
             ex_mem_width    <= 3'b0;
             ex_fence        <= 1'b0;
-            ex_pc           <= 32'b0;
-            ex_inst         <= 32'b0;
+            ex_pc           <= id_pc;
+            ex_inst         <= 32'h00000013;
             ex_valid        <= 1'b0;
+            ex_pred_taken   <= 0;
+            ex_pred_target  <= 0;
+            ex_pred_info    <= 0;
+            ex_branch_type  <= 0;
             ex_reg_write_en  <= 1'b0;
             ex_wb_sel        <= 1'b0;
     
@@ -131,6 +157,7 @@ module id_ex (
             ex_b_sel        <= id_b_sel;
             ex_rs1_use      <= id_rs1_use;
             ex_rs2_use      <= id_rs2_use;
+            ex_jal          <= id_jal;
             ex_branch_en    <= id_branch_en;
             ex_jump_r       <= id_jump_r;
             ex_rs1_addr     <= id_rs1_addr;
@@ -141,9 +168,13 @@ module id_ex (
             ex_mem_write_en  <= id_mem_write_en;
             ex_mem_width     <= id_mem_width;
             ex_fence        <= id_fence;
-            ex_pc         <= id_pc;
-            ex_inst       <= id_inst;
-            ex_valid      <= id_valid;
+            ex_pc           <= id_pc;
+            ex_inst         <= id_inst;
+            ex_valid        <= id_valid;
+            ex_pred_taken   <= id_pred_taken;
+            ex_pred_target  <= id_pred_target;
+            ex_pred_info    <= id_pred_info;
+            ex_branch_type  <= id_branch_type;
             ex_reg_write_en  <= id_reg_write_en;
             ex_wb_sel        <= id_wb_sel;
         end
