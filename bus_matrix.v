@@ -69,9 +69,14 @@ module bus_matrix (
     input  wire [31:0] m0_axi_data_rdata,
     input  wire [1:0]  m0_axi_data_rresp,
     input  wire        m0_axi_data_rvalid,
-    output wire        m0_axi_data_rready
+    output wire        m0_axi_data_rready,
 
-    //  Add other interface 
+    // m1: UART output (MMIO at 0x10000000, write-only)
+    output wire [7:0]  m_uart_tx_data,
+    output wire        m_uart_tx_valid,
+    input  wire        m_uart_tx_busy
+
+    //  Add other interface
 );
 
     // ============================================================
@@ -93,6 +98,27 @@ module bus_matrix (
     // BRAM 地址范围: 0x0000_0000 - 0x0000_3FFF (16KB )
     wire dec_is_bram_aw = (s_axi_data_awaddr[31:14] == 18'h0000);
     wire dec_is_bram_ar = (s_axi_data_araddr[31:14] == 18'h0000);
+
+    // UART 地址: 0x10000000 (write-only)
+    wire dec_is_uart_aw = (s_axi_data_awaddr[31:12] == 20'h10000);
+    wire dec_is_uart_ar = (s_axi_data_araddr[31:12] == 20'h10000);
+
+    // UART 写握手 (AW+W 同时到达)
+    wire uart_wr_hsk = dec_is_uart_aw && s_axi_data_awvalid && s_axi_data_wvalid && !m_uart_tx_busy;
+
+    // UART BVALID (写响应)
+    reg uart_bvalid;
+    always @(posedge clk) begin
+        if (!rst_n)
+            uart_bvalid <= 1'b0;
+        else if (uart_wr_hsk)
+            uart_bvalid <= 1'b1;
+        else if (uart_bvalid && s_axi_data_bready)
+            uart_bvalid <= 1'b0;
+    end
+
+    assign m_uart_tx_data  = s_axi_data_wdata[7:0];
+    assign m_uart_tx_valid = uart_wr_hsk;
     
 
 
@@ -110,11 +136,13 @@ module bus_matrix (
     assign m0_axi_data_bready  = s_axi_data_bready;
 
     // CPU 侧的写握手和反馈
-    // 如果地址匹配 BRAM，则转发 BRAM 的握手信号
-    assign s_axi_data_awready  = dec_is_bram_aw ? m0_axi_data_awready : 1'b0; 
-    assign s_axi_data_wready   = dec_is_bram_aw ? m0_axi_data_wready  : 1'b0;
-    assign s_axi_data_bvalid   = dec_is_bram_aw ? m0_axi_data_bvalid  : 1'b0;
-    assign s_axi_data_bresp    = dec_is_bram_aw ? m0_axi_data_bresp   : 2'b10; // SLVERR
+    assign s_axi_data_awready  = dec_is_bram_aw ? m0_axi_data_awready :
+                                 dec_is_uart_aw ? !m_uart_tx_busy : 1'b0;
+    assign s_axi_data_wready   = dec_is_bram_aw ? m0_axi_data_wready :
+                                 dec_is_uart_aw ? !m_uart_tx_busy : 1'b0;
+    assign s_axi_data_bvalid   = dec_is_bram_aw ? m0_axi_data_bvalid  : uart_bvalid;
+    assign s_axi_data_bresp    = dec_is_bram_aw ? m0_axi_data_bresp   :
+                                 uart_bvalid    ? 2'b00               : 2'b10;
     // AR 通道
     assign m0_axi_data_araddr  = s_axi_data_araddr;
     assign m0_axi_data_arprot  = s_axi_data_arprot;

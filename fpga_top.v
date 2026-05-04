@@ -1,8 +1,11 @@
 module fpga_top(
     input sys_clk,
     input sys_rst_n,
-    output uart_tx 
+    output uart_tx
 );
+    wire uart_tx_busy;
+    wire [7:0] uart_tx_data;
+    wire uart_tx_valid;
     reg             rst_n_r1, rst_n_r2;
 
 always @(posedge sys_clk) begin
@@ -219,7 +222,11 @@ wire                m0_axi_data_rready;
     .m0_axi_data_rdata      (m0_axi_data_rdata),
     .m0_axi_data_rresp      (m0_axi_data_rresp),
     .m0_axi_data_rvalid     (m0_axi_data_rvalid),
-    .m0_axi_data_rready     (m0_axi_data_rready)
+    .m0_axi_data_rready     (m0_axi_data_rready),
+
+    .m_uart_tx_data         (uart_tx_data),
+    .m_uart_tx_valid        (uart_tx_valid),
+    .m_uart_tx_busy         (uart_tx_busy)
 );
 
 
@@ -345,7 +352,17 @@ wire                m0_axi_data_rready;
 //end
 //end
 //assign data2cpu_valid = data2cpu_gnt;
-assign uart_tx = data_bram_rdata[12];
+    uart_tx #(
+        .CLK_FREQ   (50_000_000),
+        .BAUD_RATE  (115200)
+    ) u_uart_tx (
+        .clk        (sys_clk),
+        .rst_n      (rst_n_r2),
+        .tx_data    (uart_tx_data),
+        .tx_valid   (uart_tx_valid),
+        .tx_busy    (uart_tx_busy),
+        .tx         (uart_tx)
+    );
 
 
 endmodule
