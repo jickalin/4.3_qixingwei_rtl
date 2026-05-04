@@ -35,7 +35,10 @@ module id_stage (
     output  reg             wb_sel,
 
     input   wire            load_stall,
-    output  wire    [1:0]   id_branch_type
+    output  wire    [1:0]   id_branch_type,
+
+    output  reg             csr_read_en,
+    output  wire    [11:0]  csr_addr
 );
    
     // 基础解码
@@ -45,7 +48,8 @@ module id_stage (
     assign rs1_addr  = instr_i[19:15];
     assign rs2_addr  = instr_i[24:20];
     assign rd_addr   = instr_i[11:7];
-    assign mem_width = funct3; 
+    assign mem_width = funct3;
+    assign csr_addr  = instr_i[31:20];
 
     // 1. 立即数生成优化 (直接在 case 中构造，减少中间变量)
     always @(*) begin
@@ -67,6 +71,7 @@ module id_stage (
         ebreak_en     = 0; ecall_en = 0; fence_en = 0;
         illegal_instr = 0; wb_sel = 0;
         alu_op        = `ALU_ADD;
+        csr_read_en   = 0;
 
         case (opcode)
             `OP_LUI:   begin reg_write_en = 1; alu_a_sel = 2; alu_b_sel = 1; end
@@ -97,7 +102,13 @@ module id_stage (
                 endcase
             end
             7'b0001111: fence_en = 1;
-            7'b1110011: if (instr_i[20]) ebreak_en = 1; else ecall_en = 1;
+            7'b1110011: begin
+                case (funct3)
+                    3'b000:  if (instr_i[20]) ebreak_en = 1; else ecall_en = 1;
+                    3'b010:  begin csr_read_en = 1; reg_write_en = 1; end // CSRRS
+                    default: illegal_instr = 1;
+                endcase
+            end
             default:    illegal_instr = 1;
         endcase
     end

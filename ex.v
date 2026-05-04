@@ -37,7 +37,11 @@ module ex_stage (
     output  reg     [31:0]  branch_or_jump_pc,
 
     output  reg     [31:0]  ex_mem_wdata,
-    output  wire    [3:0]   ex_be
+    output  wire    [3:0]   ex_be,
+
+    input   wire            ex_csr_read_en,
+    input   wire    [11:0]  ex_csr_addr,
+    input   wire    [31:0]  csr_rdata
 );
     wire            branch_taken;
     reg     [31:0]  updated_rs1;
@@ -89,7 +93,9 @@ end
     assign alu_zero_o = (alu_result_o == 32'b0);
 
     always @(*) begin
-        case (ex_alu_op)
+        if (ex_csr_read_en)
+            alu_result_o = csr_rdata;
+        else case (ex_alu_op)
             `ALU_ADD:  alu_result_o = alu_src1_i + alu_src2_i;
             `ALU_SUB:  alu_result_o = alu_src1_i - alu_src2_i;
             `ALU_AND:  alu_result_o = alu_src1_i & alu_src2_i;

@@ -82,8 +82,13 @@ module id_ex #(
     //wb
     output  reg     [4:0]   ex_rd_addr,
     output  reg             ex_reg_write_en,
-    output  reg             ex_wb_sel
-    
+    output  reg             ex_wb_sel,
+
+    // csr
+    input   wire            id_csr_read_en,
+    input   wire    [11:0]  id_csr_addr,
+    output  reg             ex_csr_read_en,
+    output  reg     [11:0]  ex_csr_addr
 );
     assign  ex_funct3 = ex_inst[14:12];
     always @(posedge clk ) begin
@@ -116,8 +121,9 @@ module id_ex #(
             ex_branch_type  <= 0;
             ex_reg_write_en  <= 1'b0;
             ex_wb_sel        <= 1'b0;
+            ex_csr_read_en   <= 1'b0;
+            ex_csr_addr      <= 12'b0;
         end
-        else if (flush || load_stall) begin
             ex_alu_op       <= `ALU_ADD;
             ex_alu_rs1      <= 32'b0;
             ex_alu_rs2      <= 32'b0;
@@ -146,7 +152,9 @@ module id_ex #(
             ex_branch_type  <= 0;
             ex_reg_write_en  <= 1'b0;
             ex_wb_sel        <= 1'b0;
-    
+            ex_csr_read_en   <= 1'b0;
+            ex_csr_addr      <= 12'b0;
+
         end
         else if (!stall) begin
             ex_alu_op       <= id_alu_op;
@@ -177,6 +185,8 @@ module id_ex #(
             ex_branch_type  <= id_branch_type;
             ex_reg_write_en  <= id_reg_write_en;
             ex_wb_sel        <= id_wb_sel;
+            ex_csr_read_en   <= id_csr_read_en;
+            ex_csr_addr      <= id_csr_addr;
         end
         // else (if global_stall) : keep data
     end

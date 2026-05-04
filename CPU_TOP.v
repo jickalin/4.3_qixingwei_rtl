@@ -244,8 +244,10 @@ module rv32i_core_top #(
     wire    [4:0]   id_rd_addr;
     wire            id_reg_write_en;
     wire            id_wb_sel; // 0: ALU, 1: Mem
+    wire            id_csr_read_en;
+    wire    [11:0]  id_csr_addr;
 
-    
+
     //id
     id_stage u_id (
         //frome if
@@ -288,7 +290,9 @@ module rv32i_core_top #(
         .wb_sel         (id_wb_sel),
         
         .load_stall     (load_stall), //input load_stall to give if_stage pc+4
-        .id_branch_type (id_branch_type)
+        .id_branch_type (id_branch_type),
+        .csr_read_en    (id_csr_read_en),
+        .csr_addr       (id_csr_addr)
     );
     // link wire
     wire        [3:0]   ex_alu_op;
@@ -322,6 +326,9 @@ module rv32i_core_top #(
     wire                ex_reg_write_en;
     wire                ex_wb_sel;
     wire                ex_fence;
+    wire                ex_csr_read_en;
+    wire        [11:0]  ex_csr_addr;
+    wire        [31:0]  csr_rdata;
 
     wire        [31:0]  branch_or_jump_pc;
         
@@ -360,6 +367,8 @@ id_ex u_id_ex (
     .id_reg_write_en(id_reg_write_en),
     .id_wb_sel      (id_wb_sel),
     .id_fence       (id_fence_en),
+    .id_csr_read_en (id_csr_read_en),
+    .id_csr_addr    (id_csr_addr),
 
     .id_rs1_addr    (id_rs1_addr),
     .id_rs2_addr    (id_rs2_addr),//judge hazard
@@ -395,9 +404,11 @@ id_ex u_id_ex (
     //wb
     .ex_rd_addr     (ex_rd_addr),//also to hazard
     .ex_reg_write_en(ex_reg_write_en),
-    .ex_wb_sel      (ex_wb_sel)
+    .ex_wb_sel      (ex_wb_sel),
+    .ex_csr_read_en (ex_csr_read_en),
+    .ex_csr_addr    (ex_csr_addr)
     //给id_ex，最后给bpu的分支类别
-    
+
     );
     wire                wb_fence; //fence sign transform to wb_stage   
     wire                mem_fence;//fence sign transform to mem_stage
@@ -493,7 +504,10 @@ forward u_forward(
        // .branch_taken       (branch_taken),
         .branch_or_jump_pc  (branch_or_jump_pc),
         .ex_mem_wdata       (ex_mem_wdata),
-        .ex_be              (ex_be)
+        .ex_be              (ex_be),
+        .ex_csr_read_en     (ex_csr_read_en),
+        .ex_csr_addr        (ex_csr_addr),
+        .csr_rdata          (csr_rdata)
     );
     // link wire
         wire                mem_mem_write_en;
@@ -651,6 +665,13 @@ assign mem_stall = (m_axi_data_awvalid && !m_axi_data_awready)  || //write data 
                    (m_axi_data_arvalid && !m_axi_data_arready)  || //ready data address
                    (m_axi_instr_arvalid && !m_axi_instr_arready);  //instr memory address stall  // instr data stall cannot happen
 
+    csr u_csr (
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .retired        (wb_en),
+        .csr_rd_addr    (ex_csr_addr),
+        .csr_rd_data    (csr_rdata)
+    );
 
 endmodule
 
