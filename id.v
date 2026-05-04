@@ -9,7 +9,7 @@ module id_stage (
     input   wire    [31:0]  rs1_data,
     input   wire    [31:0]  rs2_data,
    
-    output  reg     [3:0]   alu_op,           
+    output  reg     [4:0]   alu_op,
     output  wire    [31:0]  alu_in_rs1,   
     output  wire    [31:0]  alu_in_rs2,
     output  reg     [31:0]  imm_ext,
@@ -87,11 +87,10 @@ module id_stage (
                     3'b110, 3'b111: alu_op = `ALU_SLTU;
                 endcase
             end
-            `OP_ARITH_I, `OP_ARITH_R: begin
-                reg_write_en = 1;
-                if (opcode == `OP_ARITH_I) alu_b_sel = 1;
+            `OP_ARITH_I: begin
+                reg_write_en = 1; alu_b_sel = 1;
                 case (funct3)
-                    3'b000: alu_op = (opcode == `OP_ARITH_R && funct7[5]) ? `ALU_SUB : `ALU_ADD;
+                    3'b000: alu_op = `ALU_ADD;
                     3'b001: alu_op = `ALU_SLL;
                     3'b010: alu_op = `ALU_SLT;
                     3'b011: alu_op = `ALU_SLTU;
@@ -100,6 +99,32 @@ module id_stage (
                     3'b110: alu_op = `ALU_OR;
                     3'b111: alu_op = `ALU_AND;
                 endcase
+            end
+            `OP_ARITH_R: begin
+                reg_write_en = 1;
+                if (funct7 == 7'b0000001) begin // RV32M
+                    case (funct3)
+                        3'b000: alu_op = `ALU_MUL;
+                        3'b001: alu_op = `ALU_MULH;
+                        3'b010: alu_op = `ALU_MULHSU;
+                        3'b011: alu_op = `ALU_MULHU;
+                        3'b100: alu_op = `ALU_DIV;
+                        3'b101: alu_op = `ALU_DIVU;
+                        3'b110: alu_op = `ALU_REM;
+                        3'b111: alu_op = `ALU_REMU;
+                    endcase
+                end else begin
+                    case (funct3)
+                        3'b000: alu_op = (funct7[5]) ? `ALU_SUB : `ALU_ADD;
+                        3'b001: alu_op = `ALU_SLL;
+                        3'b010: alu_op = `ALU_SLT;
+                        3'b011: alu_op = `ALU_SLTU;
+                        3'b100: alu_op = `ALU_XOR;
+                        3'b101: alu_op = (funct7[5]) ? `ALU_SRA : `ALU_SRL;
+                        3'b110: alu_op = `ALU_OR;
+                        3'b111: alu_op = `ALU_AND;
+                    endcase
+                end
             end
             7'b0001111: fence_en = 1;
             7'b1110011: begin

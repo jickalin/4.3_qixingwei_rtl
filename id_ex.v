@@ -22,7 +22,7 @@ module id_ex #(
     input   wire    [1:0]   id_branch_type,
     //  From ID Decode   
     //to ex
-    input   wire    [3:0]   id_alu_op,
+    input   wire    [4:0]   id_alu_op,
     input   wire    [31:0]  id_alu_rs1,
     input   wire    [31:0]  id_alu_rs2,
     input   wire    [31:0]  id_imm_ext,
@@ -50,7 +50,7 @@ module id_ex #(
 
     //  To EX Stage
     
-    output  reg     [3:0]   ex_alu_op,
+    output  reg     [4:0]   ex_alu_op,
     output  reg     [31:0]  ex_alu_rs1,//a
     output  reg     [31:0]  ex_alu_rs2,//b also to ex_mem
     output  reg     [31:0]  ex_alu_imm,
@@ -93,7 +93,7 @@ module id_ex #(
     assign  ex_funct3 = ex_inst[14:12];
     always @(posedge clk ) begin
         if (!rst_n) begin
-            ex_alu_op       <= 4'b0;
+            ex_alu_op       <= 5'b0;
             ex_alu_rs1      <= 32'b0;
             ex_alu_rs2      <= 32'b0;
             ex_alu_imm      <= 32'b0;

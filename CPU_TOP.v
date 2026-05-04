@@ -111,6 +111,7 @@ module rv32i_core_top #(
     wire            load_stall;
     wire            global_stall;
     wire            fence_stall;
+    wire            div_stall;
     wire            if_id_stall;
     wire            id_ex_stall;
     wire            ex_mem_stall;
@@ -221,7 +222,7 @@ module rv32i_core_top #(
     wire    [31:0]  id_rs1_data, id_rs2_data;
 
     //to ex
-    wire    [3:0]   id_alu_op;
+    wire    [4:0]   id_alu_op;
     wire    [31:0]  id_alu_rs1, id_alu_rs2;
     wire    [31:0]  id_imm_ext;
     wire    [1:0]   id_alu_a_sel;
@@ -295,7 +296,7 @@ module rv32i_core_top #(
         .csr_addr       (id_csr_addr)
     );
     // link wire
-    wire        [3:0]   ex_alu_op;
+    wire        [4:0]   ex_alu_op;
     wire        [31:0]  ex_alu_rs1;
     wire        [31:0]  ex_alu_rs2;
     wire        [31:0]  ex_alu_imm;
@@ -477,6 +478,8 @@ forward u_forward(
  wire       [31:0]      wb_data;
 
     ex_stage u_ex (
+        .clk                (clk),
+        .rst_n              (rst_n),
         .ex_alu_op          (ex_alu_op),
         .ex_alu_rs1         (ex_alu_rs1),
         .ex_alu_rs2         (ex_alu_rs2),
@@ -505,6 +508,7 @@ forward u_forward(
         .branch_or_jump_pc  (branch_or_jump_pc),
         .ex_mem_wdata       (ex_mem_wdata),
         .ex_be              (ex_be),
+        .div_stall          (div_stall),
         .ex_csr_read_en     (ex_csr_read_en),
         .ex_csr_addr        (ex_csr_addr),
         .csr_rdata          (csr_rdata)
@@ -655,10 +659,10 @@ assign cpu2data_be      = ex_be;
 
 
 
-assign id_ex_stall      = mem_stall | global_stall;
-assign if_id_stall      = mem_stall | global_stall | fence_stall | load_stall;
-assign ex_mem_stall     = mem_stall | global_stall;
-assign mem_wb_stall     = mem_stall | global_stall;
+assign id_ex_stall      = mem_stall | global_stall | div_stall;
+assign if_id_stall      = mem_stall | global_stall | fence_stall | load_stall | div_stall;
+assign ex_mem_stall     = mem_stall | global_stall | div_stall;
+assign mem_wb_stall     = mem_stall | global_stall | div_stall;
 // external mem not being ready case stall called mem_stall
 assign mem_stall = (m_axi_data_awvalid && !m_axi_data_awready)  || //write data address 
                    (m_axi_data_wvalid  && !m_axi_data_wready)   || //write data

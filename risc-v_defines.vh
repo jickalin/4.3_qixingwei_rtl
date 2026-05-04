@@ -30,3 +30,12 @@
 `define ALU_XOR  4'b0111
 `define ALU_SLT  4'b1000  // 有符号比较置位 (Set Less Than)
 `define ALU_SLTU 4'b1001  // 无符号比较置位
+// RV32M
+`define ALU_MUL    5'b01010
+`define ALU_MULH   5'b01011
+`define ALU_MULHSU 5'b01100
+`define ALU_MULHU  5'b01101
+`define ALU_DIV    5'b01110
+`define ALU_DIVU   5'b01111
+`define ALU_REM    5'b10000
+`define ALU_REMU   5'b10001
