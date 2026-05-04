@@ -77,7 +77,7 @@ module bpu #(
     // ============================================================
     // 3. 组合逻辑 (保持不变)
     // ============================================================
-    wire [9:0] bht_index = fetch_pc[11:2] ^ {{(10-GHR_WIDTH){1'b0}}, ghr};
+    wire [9:0] bht_index = fetch_pc[11:2] ^ {10'b0 | ghr};
     wire [1:0] bht_state = bht[bht_index];
     wire gshare_dir = (bht_state >= 2'b10);
 

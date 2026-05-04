@@ -73,7 +73,8 @@ end
 
 assign  fence_jump = mem_fence & (!mem_fence_reg);//这是fence信号返回的逻辑，不能一致fence流水线流到mem就要跳转
 assign flush = mispredict /*||branch_taken || jump_en */|| id_ebreak_en || id_ecall_en ||id_illegal_instr;//预测错误、分支跳转、jal还有意外都会触发flush
-assign flush_ex_jal = /*branch_taken*/mispredict || id_ebreak_en || id_ecall_en ||id_illegal_instr; //如果是jal指令他需要继续吧pc+4写到寄存器，所以jal跳转的时候id_Ex不能flush，因为jal是id阶段就产生跳转信号的,但是现在mispredict是ex阶段才产生的应该没事
+assign flush_ex_jal = flush;//因为后面发现逻辑一样，和最初设计的不同；
+//assign flush_ex_jal = /*branch_taken*/mispredict || id_ebreak_en || id_ecall_en ||id_illegal_instr; //如果是jal指令他需要继续吧pc+4写到寄存器，所以jal跳转的时候id_Ex不能flush，因为jal是id阶段就产生跳转信号的,但是现在mispredict是ex阶段才产生的应该没事
 assign fence_stall = (id_fence_en && !wb_fence);
 
 assign global_flush = 0; 

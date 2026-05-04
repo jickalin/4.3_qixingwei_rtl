@@ -128,6 +128,8 @@ end
         branch_or_jump_pc = (ex_pc +ex_alu_imm) & 32'hFFFFFFFE;
     end
 
+   /* wire [31:0] pc_base = ex_jump_r ? updated_rs1 : ex_pc;  //这样可以减少一个加法器,但是功耗增加很多，时序也差了
+    assign branch_or_jump_pc   = (pc_base + ex_alu_imm) & 32'hFFFFFFFE;*/
 
       //1T pre to write in mem data
     always @(*) begin
