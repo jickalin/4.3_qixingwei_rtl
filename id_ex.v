@@ -124,6 +124,7 @@ module id_ex #(
             ex_csr_read_en   <= 1'b0;
             ex_csr_addr      <= 12'b0;
         end
+        else if (flush || load_stall) begin
             ex_alu_op       <= `ALU_ADD;
             ex_alu_rs1      <= 32'b0;
             ex_alu_rs2      <= 32'b0;
